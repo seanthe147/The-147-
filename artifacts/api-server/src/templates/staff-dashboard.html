@@ -376,6 +376,25 @@
     .modal .checkbox-row input{width:16px;height:16px;margin-top:2px;accent-color:var(--blue);flex-shrink:0}
     .modal .checkbox-row label{font-size:13px;color:var(--text-2);cursor:pointer}
 
+    /* ── Stock repair panel ── */
+    .sr-panel{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--amber);border-radius:12px;padding:18px;margin-bottom:18px;box-shadow:var(--shadow);min-width:0;max-width:100%}
+    .sr-head{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+    .sr-title{font-size:16px;font-weight:800}
+    .sr-sub{font-size:12px;color:var(--text-2);max-width:640px}
+    .sr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+    .sr-box{border:1px solid var(--border);border-radius:10px;padding:12px 14px;min-width:0;overflow-wrap:anywhere}
+    .sr-box h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .sr-row{font-size:13px;padding:7px 0;border-bottom:1px dashed var(--border)}
+    .sr-row:last-child{border-bottom:none}
+    .sr-row small{display:block;color:var(--text-2);font-size:11px}
+    .sr-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;margin-bottom:10px}
+    .sr-fields .form-input{padding:9px 12px;font-size:13px;min-width:0}
+    .sr-fields label{font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px}
+    .sr-check{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text-2);margin:8px 0}
+    .sr-check input{margin-top:3px;accent-color:var(--blue);flex-shrink:0}
+    .sr-note{font-size:12px;background:var(--amber-light);border-left:3px solid var(--amber);padding:8px 10px;border-radius:0 6px 6px 0;margin:8px 0;color:var(--text)}
+    .sr-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .sr-scroll{max-height:260px;overflow-y:auto}
     /* ── Stock count ── */
     .sc-form{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
     .sc-form-title{font-size:16px;font-weight:800}
@@ -2188,6 +2207,7 @@
                 <button class="btn btn-secondary btn-sm" onclick="openAutoLink()">🔗 Auto-link POS</button>
                 <button class="btn btn-secondary btn-sm" onclick="openPOSImport()">📥 Import from POS</button>
                 <button class="btn btn-secondary btn-sm" onclick="openInvoicePriceReview()">Review invoice prices</button>
+                <button class="btn btn-warning btn-sm" data-testid="button-open-stock-repair" onclick="openStockRepair()">Repair stock links</button>
                 <button class="btn btn-primary btn-sm" onclick="showAddStockItemForm()">+ Add Item</button>
               </div>
             </div>
@@ -2327,6 +2347,7 @@
               <div id="stockInvoicePriceList"></div>
             </div>
 
+            <div id="stockRepairPanel" class="sr-panel" style="display:none" data-testid="panel-stock-repair"></div>
             <div id="stockCatalogueContent"><div class="loading-state"><div class="spinner"></div>Loading items…</div></div>
           </div>
         </div>
@@ -14138,6 +14159,140 @@
   window.openCrmTestSend=openCrmTestSend;
   window.crmTestSend=crmTestSend;
   window.toggleCrmSendLog=toggleCrmSendLog;
+
+  /* ── Stock repair (manager) ── */
+  var _srData=null,_srLoading=false,_srStale=false,_srBusy=false,_srInvRows=[];
+  function srEmpty(t){return '<div style="font-size:12px;color:var(--text-3)">'+escHtml(t)+'</div>';}
+  function srItemName(id){var it=(_srData&&_srData.items||[]).concat(_stockItems).find(function(i){return Number(i.id)===Number(id);});return it?it.name:('#'+id);}
+  async function openStockRepair(){
+    var p=el('stockRepairPanel');p.style.display='';
+    await loadStockRepair();
+    p.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  function closeStockRepair(){el('stockRepairPanel').style.display='none';}
+  async function loadStockRepair(){
+    var p=el('stockRepairPanel');_srLoading=true;_srStale=false;
+    p.innerHTML='<div class="loading-state" style="padding:30px"><div class="spinner"></div>Building repair preview…</div>';
+    try{
+      var r=await api('/api/stock/repair');
+      if(!r.ok)throw new Error((await r.json().catch(function(){return {};})).error||('HTTP '+r.status));
+      _srData=await r.json();
+      try{var ip=await (await api('/api/stock/invoice-prices')).json();_srInvRows=(ip&&ip.rows)||[];}catch(e){_srInvRows=[];}
+      _srLoading=false;renderStockRepair();
+    }catch(e){
+      _srLoading=false;_srData=null;
+      p.innerHTML='<p style="color:var(--red);font-size:13px">Could not load repair preview: '+escHtml(e.message||'unknown')+'</p><div class="sr-actions" style="margin-top:8px"><button class="btn btn-secondary btn-sm" data-testid="button-repair-retry" onclick="loadStockRepair()">Retry</button><button class="btn btn-ghost btn-sm" onclick="closeStockRepair()">Close</button></div>';
+    }
+  }
+  function srActionable(){
+    if(!_srData)return 0;
+    var d=(_srData.duplicates||[]).filter(function(x){return !x.blockedReason;}).length;
+    return d+(_srData.unsafeLinks||[]).length;
+  }
+  function renderStockRepair(){
+    var p=el('stockRepairPanel'),d=_srData;if(!d)return;
+    var dups=d.duplicates||[],act=dups.filter(function(x){return !x.blockedReason;}),blk=dups.filter(function(x){return x.blockedReason;}),un=d.unsafeLinks||[];
+    var n=srActionable();
+    var items=(d.items||[]).slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+    var vars=(d.variations||[]).slice().sort(function(a,b){return String(a.displayName).localeCompare(String(b.displayName));});
+    var cats=_stockCategories.map(function(c){return '<option value="'+escHtml(c.id)+'">'+escHtml(c.name)+'</option>';}).join('');
+    var h='<div class="sr-head"><div><div class="sr-title">Repair stock links</div><div class="sr-sub">Preview version <code data-testid="text-repair-version">'+escHtml(d.version)+'</code>. Nothing changes until you confirm.</div></div>'+
+      '<div class="sr-actions"><button class="btn btn-secondary btn-sm" data-testid="button-repair-refresh" onclick="loadStockRepair()">Refresh preview</button><button class="btn btn-ghost btn-sm" data-testid="button-repair-close" onclick="closeStockRepair()">Close</button></div></div>';
+    if(_srStale)h+='<div class="modal-err show" role="alert" data-testid="status-repair-stale">The catalogue changed since this preview was built. Refresh the preview before applying.</div>';
+    h+='<div class="sr-grid">';
+    h+='<div class="sr-box"><h4>Exact duplicates to merge <span class="pill pill-blue">'+act.length+'</span></h4><div class="sr-scroll">'+(act.length?act.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-dup-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' · archive '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small></div>';}).join(''):srEmpty('No mergeable duplicates.'))+'</div></div>';
+    h+='<div class="sr-box"><h4>Blocked — left untouched <span class="pill pill-red">'+blk.length+'</span></h4><div class="sr-scroll">'+(blk.length?blk.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-blocked-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' vs '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small><small style="color:var(--red)">'+escHtml(x.blockedReason)+'</small></div>';}).join(''):srEmpty('No blocked conflicts.'))+'</div></div>';
+    h+='<div class="sr-box"><h4>Unsafe Square links to quarantine <span class="pill pill-amber">'+un.length+'</span></h4><div class="sr-scroll">'+(un.length?un.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-unsafe-'+i+'"><strong>'+escHtml(x.name)+'</strong> → '+escHtml(x.variationName||x.variationId)+'<small>'+escHtml(x.reason)+'</small></div>';}).join(''):srEmpty('No unsafe links.'))+'</div></div>';
+    h+='</div>';
+    h+='<div class="sr-box" style="margin-top:14px"><h4>Apply repair</h4><div class="sr-note">Applying will: <b>merge exact duplicates</b> into the kept item, preserving and reassigning their historical count, delivery and price lines; leave <b>blocked conflicts</b> (e.g. same-count clashes) completely untouched; and <b>quarantine invalid or ambiguous Square links</b> rather than guessing a replacement. You can relink manually below.</div>'+
+      '<label class="sr-check"><input type="checkbox" id="srApplyConfirm" data-testid="checkbox-repair-confirm" onchange="srSyncApply()" '+(n?'':'disabled')+'> I have reviewed this preview and confirm the repair.</label>'+
+      '<div class="sr-actions"><button class="btn btn-warning btn-sm" id="srApplyBtn" data-testid="button-repair-apply" disabled onclick="applyStockRepair()">Apply repair ('+n+' change'+(n===1?'':'s')+')</button>'+(n?'':'<span style="font-size:12px;color:var(--text-2)">No actionable issues.</span>')+'</div></div>';
+    h+='<div class="sr-grid" style="margin-top:14px">';
+    h+='<div class="sr-box"><h4>Manual relink</h4><div class="sr-fields">'+
+      '<div><label for="srLinkSearch">Find item</label><input class="form-input" id="srLinkSearch" data-testid="input-relink-search" placeholder="Type to filter…" oninput="srFilterItems()"></div>'+
+      '<div><label for="srLinkItem">Stock item</label><select class="form-input" id="srLinkItem" data-testid="select-relink-item" onchange="srSyncLink()"><option value="">Choose item…</option>'+items.map(function(i){return '<option value="'+escHtml(i.id)+'">'+escHtml(i.name)+(i.containerSize?' · '+escHtml(i.containerSize):'')+(i.countUnit?' ('+escHtml(i.countUnit)+')':'')+'</option>';}).join('')+'</select></div>'+
+      '<div><label for="srLinkVar">Square variation</label><select class="form-input" id="srLinkVar" data-testid="select-relink-variation" onchange="srSyncLink()"><option value="">Choose variation…</option>'+vars.map(function(v){return '<option value="'+escHtml(v.variationId)+'">'+escHtml(v.displayName)+'</option>';}).join('')+'</select></div>'+
+      '<div><label for="srLinkFactor">Factor (count units per sale)</label><input class="form-input" id="srLinkFactor" data-testid="input-relink-factor" type="number" inputmode="decimal" step="any" min="0" placeholder="Required" oninput="srSyncLink()"></div>'+
+      '</div><div style="font-size:11px;color:var(--text-2)">Examples: keg counted in pints — pint = 1, half = 0.5. Bottle counted as 700ml — a 25ml shot = 0.03571429. Check your actual measure; never assume 25ml vs 35ml.</div>'+
+      '<label class="sr-check"><input type="checkbox" id="srLinkConfirm" data-testid="checkbox-relink-confirm" onchange="srSyncLink()"> I have checked the measurement and this factor is correct.</label>'+
+      '<div class="sr-note">Adds or replaces this one variation link only; other links on the item are kept. The change is audited.</div>'+
+      '<div class="sr-actions"><button class="btn btn-primary btn-sm" id="srLinkBtn" data-testid="button-relink-save" disabled onclick="saveStockRelink()">Save link</button><span id="srLinkErr" style="font-size:12px;color:var(--red)"></span></div></div>';
+    h+='<div class="sr-box"><h4>Add missing invoice product</h4>'+(_srInvRows.length?'<div class="sr-fields">'+
+      '<div><label for="srInvKey">Invoice product</label><select class="form-input" id="srInvKey" data-testid="select-invoice-product" onchange="srSyncInv()"><option value="">Choose invoice line…</option>'+_srInvRows.map(function(r,i){return '<option value="'+i+'">'+escHtml(r.name)+'</option>';}).join('')+'</select></div>'+
+      '<div><label for="srInvCat">Category</label><select class="form-input" id="srInvCat" data-testid="select-invoice-category" onchange="srSyncInv()"><option value="">Choose category…</option>'+cats+'</select></div></div>'+
+      '<div id="srInvInfo" data-testid="text-invoice-info" style="font-size:12px;color:var(--text-2);min-height:18px"></div>'+
+      '<div class="sr-note">Creates a catalogue stock item only. It does not record a delivery and does not link it to Square.</div>'+
+      '<label class="sr-check"><input type="checkbox" id="srInvConfirm" data-testid="checkbox-invoice-confirm" onchange="srSyncInv()"> Create this catalogue product.</label>'+
+      '<div class="sr-actions"><button class="btn btn-primary btn-sm" id="srInvBtn" data-testid="button-invoice-create" disabled onclick="createRepairInvoiceItem()">Create product</button><span id="srInvErr" style="font-size:12px;color:var(--red)"></span></div>'
+      :srEmpty('No unmatched invoice products.'))+'</div>';
+    h+='</div>';
+    var hist=d.history||[];
+    h+='<div class="sr-box" style="margin-top:14px"><h4>Repair history <span class="pill pill-gray">'+hist.length+'</span></h4><div class="sr-scroll">'+(hist.length?hist.map(function(x){return '<div class="sr-row" style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap" data-testid="row-repair-history-'+escHtml(x.id)+'"><div style="min-width:0">'+escHtml(x.action)+'<small>'+escHtml(new Date(x.createdAt).toLocaleString('en-GB'))+'</small></div><button class="btn btn-secondary btn-sm" data-testid="button-history-download-'+escHtml(x.id)+'" onclick="downloadRepairHistory('+Number(x.id)+')">Download JSON</button></div>';}).join(''):srEmpty('No repairs recorded yet.'))+'</div></div>';
+    p.innerHTML=h;
+  }
+  function srSyncApply(){var b=el('srApplyBtn'),c=el('srApplyConfirm');if(b)b.disabled=_srBusy||_srStale||!_srData||!srActionable()||!(c&&c.checked);}
+  function srFilterItems(){
+    var q=el('srLinkSearch').value.trim().toLowerCase(),s=el('srLinkItem');
+    Array.prototype.forEach.call(s.options,function(o,i){if(i===0)return;o.hidden=!!q&&o.textContent.toLowerCase().indexOf(q)<0;});
+  }
+  function srFactor(){var v=el('srLinkFactor').value.trim();if(v==='')return null;var f=Number(v);return isFinite(f)&&f>0?f:null;}
+  function srSyncLink(){
+    var b=el('srLinkBtn');if(!b)return;
+    var fv=el('srLinkFactor').value.trim();
+    el('srLinkErr').textContent=fv!==''&&srFactor()==null?'Factor must be a positive number.':'';
+    b.disabled=_srBusy||!el('srLinkItem').value||!el('srLinkVar').value||srFactor()==null||!el('srLinkConfirm').checked;
+  }
+  function srSyncInv(){
+    var b=el('srInvBtn');if(!b)return;
+    var ix=el('srInvKey').value,r=ix===''?null:_srInvRows[Number(ix)];
+    el('srInvInfo').innerHTML=r?'<b>'+escHtml(r.name)+'</b> · '+escHtml(r.supplier||'Supplier unknown')+(r.supplierCode?' #'+escHtml(r.supplierCode):'')+' · '+escHtml(r.packLabel||'pack')+(r.packUnits!=null?' ('+escHtml(String(r.packUnits))+' units)':''):'';
+    b.disabled=_srBusy||!r||!el('srInvCat').value||!el('srInvConfirm').checked;
+  }
+  async function srAfterMutation(msg){
+    toast(msg||'Saved','success');
+    try{_stockItems=(await (await api('/api/stock/items')).json())||[];}catch(e){}
+    renderStockCatalogue();
+    await loadStockRepair();
+  }
+  async function srPost(url,body){
+    var r=await api(url,{method:'POST',body:JSON.stringify(body)});
+    var j=await r.json().catch(function(){return {};});
+    if(!r.ok){var e=new Error(j.error||j.message||('HTTP '+r.status));e.status=r.status;throw e;}
+    return j;
+  }
+  async function applyStockRepair(){
+    if(!_srData||!srActionable()||!el('srApplyConfirm').checked)return;
+    _srBusy=true;srSyncApply();
+    try{var j=await srPost('/api/stock/repair/apply',{version:_srData.version,confirmed:true});_srBusy=false;await srAfterMutation(j.message||'Repair applied');}
+    catch(e){_srBusy=false;if(e.status===409){_srStale=true;renderStockRepair();}else toast('Repair failed: '+e.message,'error');srSyncApply();}
+  }
+  async function saveStockRelink(){
+    var f=srFactor(),id=el('srLinkItem').value,v=el('srLinkVar').value;
+    if(!id||!v||f==null||!el('srLinkConfirm').checked){srSyncLink();return;}
+    _srBusy=true;srSyncLink();
+    try{var j=await srPost('/api/stock/repair/link',{stockItemId:Number(id),variationId:v,factor:f,confirmed:true});_srBusy=false;await srAfterMutation(j.message||('Linked '+srItemName(id)));}
+    catch(e){_srBusy=false;el('srLinkErr').textContent=e.message;srSyncLink();}
+  }
+  async function createRepairInvoiceItem(){
+    var ix=el('srInvKey').value,r=ix===''?null:_srInvRows[Number(ix)],c=el('srInvCat').value;
+    if(!r||!c||!el('srInvConfirm').checked)return;
+    _srBusy=true;srSyncInv();
+    try{var j=await srPost('/api/stock/repair/create-invoice',{key:r.key,categoryId:isNaN(Number(c))?c:Number(c),confirmed:true});_srBusy=false;await srAfterMutation(j.message||'Product created');}
+    catch(e){_srBusy=false;el('srInvErr').textContent=e.message;srSyncInv();}
+  }
+  async function downloadRepairHistory(id){
+    try{
+      var r=await api('/api/stock/repair/history/'+encodeURIComponent(id));
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      var data=await r.json();
+      var url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+      var a=document.createElement('a');a.href=url;a.download='stock-repair-'+id+'.json';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    }catch(e){toast('Download failed: '+e.message,'error');}
+  }
+  window.openStockRepair=openStockRepair;window.closeStockRepair=closeStockRepair;window.loadStockRepair=loadStockRepair;
+  window.srSyncApply=srSyncApply;window.srFilterItems=srFilterItems;window.srSyncLink=srSyncLink;window.srSyncInv=srSyncInv;
+  window.applyStockRepair=applyStockRepair;window.saveStockRelink=saveStockRelink;window.createRepairInvoiceItem=createRepairInvoiceItem;window.downloadRepairHistory=downloadRepairHistory;
 
   window.switchStockTab=switchStockTab;
   window.startNewStockCount=startNewStockCount;

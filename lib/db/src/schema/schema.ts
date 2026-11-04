@@ -1335,6 +1335,14 @@ export const stockItemPosLinks = pgTable("stock_item_pos_links", {
   squareVariationId: text("square_variation_id").notNull(),
   squareVariationName: text("square_variation_name"),
   soldUnitFactor: numeric("sold_unit_factor").notNull().default("1"),
+  verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type StockItemPosLink = typeof stockItemPosLinks.$inferSelect;
+export const stockRepairAudit = pgTable("stock_repair_audit", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  actor: text("actor").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

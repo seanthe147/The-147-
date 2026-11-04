@@ -40,6 +40,7 @@ import { allocateStockMatches } from "../stock-match-allocation";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 import { stockFinancials } from "../stock-finance";
 import { registerStockInvoicePrices } from "../stock-invoice-prices";
+import { registerStockRepair } from "../stock-repair";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -15813,6 +15814,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
   registerStockInvoicePrices(app, staffAuth, managerAuth);
+  registerStockRepair(app, staffAuth, managerAuth);
 
   app.get("/api/stock/live", staffAuth, managerAuth, async (_req, res) => {
     try { res.json(await liveStock()); }
