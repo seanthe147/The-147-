@@ -1288,8 +1288,8 @@ export async function provisionSnookerMemberDiscount(options: {
   const discountId = await ensureCatalogObject("DISCOUNT", discountName, {
     name: discountName,
     discount_type: "FIXED_PERCENTAGE",
-    percentage_discount: "10",
-  }, ["discount_type", "percentage_discount"]);
+    percentage: "10",
+  }, ["discount_type", "percentage"]);
   const productSetId = await ensureCatalogObject("PRODUCT_SET", productSetName, {
     name: productSetName,
     all_products: false,

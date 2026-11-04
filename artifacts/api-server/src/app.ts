@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import compression from "compression";
+import healthRouter from "./routes/health";
 
 const SENSITIVE_FIELDS = new Set([
   "pin", "confirmPin", "masterPin", "newPin", "currentPin", "password",
@@ -21,6 +22,8 @@ function redactSensitive(obj: unknown, depth = 0): unknown {
 export function createApp(): Express {
   const app = express();
   app.set("trust proxy", 1);
+  // Public liveness check: independent of customer auth and external providers.
+  app.use("/api", healthRouter);
 
   // CORS
   app.use((req: Request, res: Response, next: NextFunction) => {
