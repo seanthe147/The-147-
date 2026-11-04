@@ -19,14 +19,14 @@ try {
     WHERE active AND approval_status='approved' AND role IN ('manager','owner') LIMIT 1 RETURNING staff_user_id`, [token]);
   assert.equal(session.rowCount, 1);
   const cats = await request("stock/categories");
-  const product = await request("stock/items", "POST", { categoryId: cats.body[0].id, name: `Stock smoke ${Date.now()}`, countUnit: "bottle", caseSize: 24 });
+  const product = await request("stock/items", "POST", { categoryId: cats.body[0].id, name: `Stock smoke ${Date.now()}`, countUnit: "bottle", caseSize: 24, unitCostPence: 100 });
   assert.equal(product.status, 200); items.push(product.body.id);
   const id = product.body.id;
   const before = await pool.query("SELECT count(*)::int AS n FROM stock_deliveries");
   const invalid = await request("stock/deliveries", "POST", { deliveredAt: "2035-01-02", lines: [{ stockItemId: id, quantityCases: "-2" }] });
   assert.equal(invalid.status, 400);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM stock_deliveries")).rows[0].n, before.rows[0].n);
-  const delivery = await request("stock/deliveries", "POST", { deliveredAt: "2035-01-02", lines: [{ stockItemId: id, quantityCases: "2" }] });
+  const delivery = await request("stock/deliveries", "POST", { deliveredAt: "2035-01-02", lines: [{ stockItemId: id, quantityCases: "2", invoiceLineCostPence: 4800 }] });
   assert.equal(delivery.status, 200); deliveries.push(delivery.body.id);
   assert.equal(Number((await pool.query("SELECT quantity_units FROM stock_delivery_lines WHERE delivery_id=$1", deliveries)).rows[0].quantity_units), 48);
   for (const [date, qty] of [["2035-01-01", "10"], ["2035-01-03", "20"]]) {
@@ -46,6 +46,27 @@ try {
   assert.equal(row.closing, 20);
   assert.equal(row.consumed, 38);
   assert.equal(row.variance, null); // unlinked product, never invent Square sales
+  assert.equal(row.openingValuePence, 1000);
+  assert.equal(row.deliveredValuePence, 4800);
+  assert.equal(row.closingValuePence, 2000);
+  assert.equal(row.consumedCostPence, 3800);
+  assert.equal(row.grossProfitPence, null, "unlinked sales cannot produce profit");
+  assert.equal((await request(`stock/items/${id}`, "PATCH", { unitCostPence: 999 })).status, 200);
+  const unchanged = await request("stock/report?periodStart=2035-01-01&periodEnd=2035-01-03");
+  assert.equal(unchanged.body.find(r => r.itemId === id).openingValuePence, 1000, "catalogue cost cannot rewrite count snapshot");
+  assert.equal((await request(`stock/items/${id}`, "PATCH", { countUnit: "keg" })).status, 409);
+  const keg = await request("stock/items", "POST", { categoryId: cats.body[0].id, name: "Coors 3.4% stock test",
+    countUnit: "keg", containerSize: "100L", servesPerUnit: 176 });
+  assert.equal(keg.status, 200); items.push(keg.body.id);
+  const price = await request("stock/invoice-prices", "POST", { key: "MC-5005796", stockItemId: keg.body.id });
+  assert.equal(price.status, 200);
+  assert.equal(Number(price.body.unitCostPence), 25228);
+  assert.equal(price.body.purchasePacks[0].quantityUnits, .5);
+  assert.equal(price.body.purchasePacks[0].costPence, 12614);
+  assert.equal((await request("stock/invoice-prices", "POST", { key: "MC-5005796", stockItemId: id })).status, 400,
+    "invoice cost cannot be applied to an incompatible item");
+  assert.equal((await request("stock/deliveries", "POST", { deliveredAt: "2035-01-02",
+    lines: [{ stockItemId: id, quantityUnits: 1, invoiceLineCostPence: -1 }] })).status, 400);
   console.log("PASS: delivery atomicity/conversion, draft update/submit/lock and reconciliation");
 } finally {
   await pool.query("DELETE FROM stock_counts WHERE id = ANY($1::int[])", [counts]);

@@ -31,6 +31,25 @@ Supplier price preference: “any non Molson coors products use LWC Priceing but
 
 **How to apply:** distinguish brewery-owned brands from third-party products sold by Molson Coors when resolving overlap. Free promotional lines and container-control lines are not normal replacement purchase costs.
 
+The owner clarified this means **Molson brewery brands only**. Third-party products on both invoices must use LWC prices, not Molson wholesale prices.
+
+**Why:** choosing the supplier with the most recent invoice or cheaper price would contradict the confirmed rule.
+
+**How to apply:** do not substitute Molson third-party prices when an LWC price is missing. Mark the price unknown and request a relevant LWC invoice.
+
+## Stock financial reporting decisions
+Use ex-VAT stock gross profit, with periodic weighted-average valuation from the opening count's captured cost and actual delivery invoice totals. This is an operational estimate, not a full accounting P&L. Missing costs must remain unknown, not zero, and known-value subtotals need coverage.
+
+**Why:** invoice pack splits produce fractional penny unit costs, and catalogue price changes must not rewrite submitted counts. Blank historical costs cannot safely be inferred from a newer invoice.
+
+**How to apply:** keep fractional unit costs until monetary totals, snapshot catalogue cost when submitting counts, and flag unallocated refunds rather than invent a net-sales figure. Refunds are not automatic stock returns.
+
+Alternate keg sizes belong to one stock identity with pack-to-count-unit conversion, not duplicate Square sales mappings.
+
+**Why:** the same drink is purchased in 50L and 100L packs but sold through the same pint/half-pint variations; separate mapped stock items would duplicate deductions.
+
+**How to apply:** preserve historical count units, add purchase packs, and never import uploaded invoice quantities as deliveries without an explicit delivery-entry action.
+
 ## Reconciliation boundaries and missing counts
 Estimated live levels must not overwrite physical counts or write quantities back to Square.
 

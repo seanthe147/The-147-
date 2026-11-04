@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, boolean, integer, index, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, boolean, integer, index, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 // drizzle-zod >=0.8 emits Zod v4 schemas, so any `z.xxx()` we splice into
 // those schemas via `.extend(...)` MUST also come from `zod/v4`. Importing the
@@ -1262,6 +1262,10 @@ export const stockItems = pgTable("stock_items", {
   name: text("name").notNull(),
   supplier: text("supplier").default("Molson Coors"),
   supplierCode: text("supplier_code"),
+  unitCostPence: numeric("unit_cost_pence"), // ex VAT per count unit; fractional pence for case splits
+  costSource: text("cost_source"),
+  costDate: text("cost_date"),
+  purchasePacks: jsonb("purchase_packs").$type<Array<{ label: string; quantityUnits: number; costPence: number | null; supplierCode?: string }>>().notNull().default([]),
   countUnit: text("count_unit").notNull(),        // "keg" | "bottle" | "can" | "bib"
   containerSize: text("container_size"),           // "50L", "330ml", "700ml" etc.
   caseSize: integer("case_size"),                 // units per case (e.g. 24)
@@ -1293,6 +1297,7 @@ export const stockDeliveryLines = pgTable("stock_delivery_lines", {
   stockItemId: integer("stock_item_id").references(() => stockItems.id).notNull(),
   quantityCases: numeric("quantity_cases"),           // optional: cases received
   quantityUnits: numeric("quantity_units").notNull(), // in countUnit
+  invoiceLineCostPence: integer("invoice_line_cost_pence"), // total product line ex VAT, not price per pack
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type StockDeliveryLine = typeof stockDeliveryLines.$inferSelect;
@@ -1314,6 +1319,9 @@ export const stockCountLines = pgTable("stock_count_lines", {
   countId: integer("count_id").references(() => stockCounts.id, { onDelete: "cascade" }).notNull(),
   stockItemId: integer("stock_item_id").references(() => stockItems.id).notNull(),
   quantityUnits: numeric("quantity_units").notNull(),
+  unitCostPence: numeric("unit_cost_pence"), // snapshot on submission; never backfill historic counts
+  countUnitSnapshot: text("count_unit_snapshot"),
+  baseUnitsPerCountUnit: numeric("base_units_per_count_unit"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

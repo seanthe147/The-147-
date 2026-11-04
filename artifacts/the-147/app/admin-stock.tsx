@@ -48,6 +48,17 @@ interface StockItem {
   squareCatalogVariationName: string | null;
   posLinks?: PosLink[];
   active: boolean;
+  unitCostPence?: string | null;
+  costSource?: string | null;
+  costDate?: string | null;
+  purchasePacks?: PurchasePack[];
+}
+
+interface PurchasePack {
+  label: string;
+  quantityUnits: number;
+  costPence: number | null;
+  supplierCode?: string;
 }
 
 interface PosLink {
@@ -80,6 +91,7 @@ interface DeliveryLine {
   stockItemId: number;
   quantityUnits: string;
   quantityCases?: string;
+  invoiceLineCostPence?: number | null;
 }
 
 interface Delivery {
@@ -95,6 +107,7 @@ interface Delivery {
 interface CountLine {
   stockItemId: number;
   quantityUnits: string;
+  unitCostPence?: string | number | null;
 }
 
 interface StockCount {
@@ -125,6 +138,58 @@ interface ReportLine {
   actualPeriodEnd: string;
   sold: number | null;
   variance: number | null;
+  costPerBaseUnitPence?: number | null;
+  openingValuePence?: number | null;
+  deliveredValuePence?: number | null;
+  closingValuePence?: number | null;
+  consumedCostPence?: number | null;
+  expectedSalesCostPence?: number | null;
+  varianceValuePence?: number | null;
+  netSalesPence?: number | null;
+  grossProfitPence?: number | null;
+  grossMarginPercent?: number | null;
+  financialWarnings?: string[];
+  valuationMethod?: string;
+}
+
+// ── Money helpers (all ex VAT; null = unknown, never zero) ──
+function costNum(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function fmtPence(v: string | number | null | undefined): string {
+  const n = costNum(v);
+  if (n === null) return "Unknown";
+  const ab = Math.abs(n) / 100;
+  const frac = Math.abs(ab * 100 - Math.round(ab * 100)) > 0.0001;
+  return `${n < 0 ? "−" : ""}£${ab.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: frac ? 4 : 2 })}`;
+}
+/** Parses "£1.15" → pence (decimal allowed up to maxDp pound places). null = blank. undefined = invalid. */
+function parsePounds(raw: string, maxDp = 2): number | null | undefined {
+  const t = raw.trim().replace(/^£/, "").replace(/,/g, "");
+  if (t === "") return null;
+  if (!new RegExp(`^\\d+(\\.\\d{1,${maxDp}})?$`).test(t)) return undefined;
+  const [w, f = ""] = t.split(".");
+  return (Number(w) * 10000 + Number((f + "0000").slice(0, 4))) / 100;
+}
+function poundsInput(v: string | number | null | undefined): string {
+  const n = costNum(v);
+  if (n === null) return "";
+  return (n / 100).toFixed(4).replace(/(\.\d\d\d*?)0+$/, "$1");
+}
+function knownSum(rows: ReportLine[], key: keyof ReportLine): { sum: number; known: number; total: number } {
+  let sum = 0, known = 0;
+  rows.forEach((r) => { const v = costNum(r[key] as number | null | undefined); if (v !== null) { sum += v; known += 1; } });
+  return { sum, known, total: rows.length };
+}
+function itemPacks(item: StockItem | undefined): PurchasePack[] {
+  return Array.isArray(item?.purchasePacks) ? item!.purchasePacks!.filter((p) => p && Number(p.quantityUnits) > 0) : [];
+}
+function varianceLabel(v: number | null): string {
+  if (v === null) return "Not calculated";
+  if (Math.abs(v) < 0.005) return "Balanced";
+  return v > 0 ? "Unexplained shortage" : "Unexplained surplus";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -279,6 +344,26 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
   const [invoiceRef, setInvoiceRef] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Record<number, string>>({});
+  const [lineCosts, setLineCosts] = useState<Record<number, string>>({});
+  const [linePacks, setLinePacks] = useState<Record<number, number | null>>({});
+  const [costTouched, setCostTouched] = useState<Record<number, boolean>>({});
+
+  /** Returns converted count units and a catalogue-based suggested invoice total (pence) for a line. */
+  const lineCalc = (item: StockItem, qtyRaw: string, packIdx: number | null | undefined) => {
+    const q = parseFloat(qtyRaw);
+    if (!(q > 0)) return null;
+    const pk = packIdx != null ? itemPacks(item)[packIdx] : undefined;
+    const units = pk ? q * Number(pk.quantityUnits) : item.caseSize ? q * item.caseSize : q;
+    let suggest: number | null = null;
+    if (pk && costNum(pk.costPence) !== null) suggest = costNum(pk.costPence)! * q;
+    else if (costNum(item.unitCostPence) !== null) suggest = costNum(item.unitCostPence)! * units;
+    return { units: Math.round(units * 10000) / 10000, suggest: suggest === null ? null : Math.round(suggest), pk };
+  };
+  const refreshSuggestion = (item: StockItem, qtyRaw: string, packIdx: number | null | undefined) => {
+    if (costTouched[item.id]) return;
+    const c = lineCalc(item, qtyRaw, packIdx);
+    setLineCosts((prev) => ({ ...prev, [item.id]: c && c.suggest !== null ? (c.suggest / 100).toFixed(2) : "" }));
+  };
 
   const deliveriesQuery = useQuery<Delivery[]>({
     queryKey: ["/api/stock/deliveries"],
@@ -295,6 +380,9 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
       queryClient.invalidateQueries({ queryKey: ["/api/stock/deliveries"] });
       setShowForm(false);
       setLines({});
+      setLineCosts({});
+      setLinePacks({});
+      setCostTouched({});
       setInvoiceRef("");
       setNotes("");
     },
@@ -302,13 +390,29 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
   });
 
   const handleSave = () => {
+    const bad: string[] = [];
+    const orphan: string[] = [];
+    Object.entries(lineCosts).forEach(([id, c]) => {
+      const name = items.find((i) => i.id === Number(id))?.name ?? `Item #${id}`;
+      const pc = parsePounds(c ?? "");
+      if (pc === undefined) bad.push(name);
+      else if (pc !== null && !(parseFloat(lines[Number(id)] ?? "") > 0)) orphan.push(name);
+    });
+    if (bad.length) return Alert.alert("Check invoice £", `Use pounds and pence, e.g. 245.60: ${bad.slice(0, 5).join(", ")}`);
+    if (orphan.length) return Alert.alert("Cost without quantity", `Add a quantity or clear the £ for: ${orphan.slice(0, 5).join(", ")}`);
     const lineItems = Object.entries(lines)
       .filter(([, qty]) => qty && parseFloat(qty) > 0)
       .map(([id, qty]) => {
         const item = items.find((i) => i.id === Number(id));
+        const pc = parsePounds(lineCosts[Number(id)] ?? "");
+        const invoiceLineCostPence = pc === null || pc === undefined ? null : Math.round(pc);
+        const packIdx = linePacks[Number(id)];
+        const pk = packIdx != null ? itemPacks(item)[packIdx] : undefined;
+        // Pack chosen: convert to count units client-side and send units only (never cases too).
+        if (pk) return { stockItemId: Number(id), quantityUnits: String(Math.round(parseFloat(qty) * Number(pk.quantityUnits) * 10000) / 10000), invoiceLineCostPence };
         // Case-packed items are entered in cases; the server multiplies by caseSize.
-        if (item?.caseSize) return { stockItemId: Number(id), quantityCases: qty };
-        return { stockItemId: Number(id), quantityUnits: qty };
+        if (item?.caseSize) return { stockItemId: Number(id), quantityCases: qty, invoiceLineCostPence };
+        return { stockItemId: Number(id), quantityUnits: qty, invoiceLineCostPence };
       });
     if (!lineItems.length) return Alert.alert("Enter quantities", "Add at least one item quantity.");
     createMutation.mutate({ deliveredAt: new Date(deliveredAt).toISOString(), supplier, invoiceRef, notes, lines: lineItems });
@@ -337,13 +441,14 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
           <TextInput style={[styles.input, { height: 64 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor="#666" placeholder="Optional" />
 
           <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Quantities received</Text>
-          <Text style={styles.fieldHint}>Leave blank for items not in this delivery</Text>
+          <Text style={styles.fieldHint}>Leave blank for items not in this delivery. £ = invoice line TOTAL ex VAT for that product (whole line, not per case). Blank £ stays unknown, not £0.</Text>
 
           {groupedItems.map(({ cat, items: catItems }) => (
             <View key={cat.id}>
               <Text style={styles.catHeader}>{cat.name}</Text>
               {catItems.map((item) => (
-                <View key={item.id} style={styles.lineRow}>
+                <React.Fragment key={item.id}>
+                <View style={styles.lineRow}>
                   <View style={styles.lineInfo}>
                     <Text style={styles.lineName}>{item.name}</Text>
                     <Text style={styles.lineUnit}>{item.containerSize} · {item.caseSize ? `case of ${item.caseSize}` : UNIT_LABEL[item.countUnit]}</Text>
@@ -351,13 +456,47 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
                   <TextInput
                     style={styles.qtyInput}
                     value={lines[item.id] ?? ""}
-                    onChangeText={(v) => setLines((prev) => ({ ...prev, [item.id]: v }))}
+                    onChangeText={(v) => { setLines((prev) => ({ ...prev, [item.id]: v })); refreshSuggestion(item, v, linePacks[item.id]); }}
+                    accessibilityLabel={`Quantity delivered for ${item.name}`}
                     keyboardType="decimal-pad"
                     placeholder="0"
                     placeholderTextColor="#555"
                   />
                   <Text style={styles.unitTag}>{item.countUnit === "keg" ? "kegs" : item.caseSize ? "cases" : UNIT_LABEL[item.countUnit]}</Text>
+                  <TextInput
+                    style={[styles.qtyInput, { width: 76 }]}
+                    value={lineCosts[item.id] ?? ""}
+                    onChangeText={(v) => { setLineCosts((prev) => ({ ...prev, [item.id]: v })); setCostTouched((prev) => ({ ...prev, [item.id]: true })); }}
+                    keyboardType="decimal-pad"
+                    placeholder="£ line"
+                    placeholderTextColor="#555"
+                    accessibilityLabel={`Invoice line total in pounds ex VAT for ${item.name}`}
+                  />
                 </View>
+                {(itemPacks(item).length > 0 || lineCalc(item, lines[item.id] ?? "", linePacks[item.id])) && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, paddingHorizontal: 4, paddingBottom: 8 }}>
+                    {itemPacks(item).length > 0 && (
+                      <>
+                        {[{ idx: null as number | null, label: item.caseSize ? `Cases ×${item.caseSize}` : unitWord(item.countUnit, 2) }, ...itemPacks(item).map((pk, i) => ({ idx: i as number | null, label: pk.label }))].map((o) => {
+                          const on = (linePacks[item.id] ?? null) === o.idx;
+                          return (
+                            <Pressable key={String(o.idx)} onPress={() => { setLinePacks((prev) => ({ ...prev, [item.id]: o.idx })); refreshSuggestion(item, lines[item.id] ?? "", o.idx); }}
+                              accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={`Enter ${item.name} quantity as ${o.label}`}
+                              style={{ paddingHorizontal: 10, paddingVertical: 6, minHeight: 32, borderRadius: 16, borderWidth: 1, borderColor: on ? Colors.brand.gold : colors.border, backgroundColor: on ? Colors.brand.gold : "transparent" }}>
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: on ? "#000" : colors.text }}>{o.label}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </>
+                    )}
+                    {(() => {
+                      const c = lineCalc(item, lines[item.id] ?? "", linePacks[item.id]);
+                      if (!c) return null;
+                      return <Text style={{ fontSize: 12, color: colors.textSecondary }}>= {fmtQty(c.units)} {unitWord(item.countUnit, c.units)}{c.suggest !== null ? ` · suggested ${fmtPence(c.suggest)} (check invoice)` : ""}</Text>;
+                    })()}
+                  </View>
+                )}
+                </React.Fragment>
               ))}
             </View>
           ))}
@@ -409,7 +548,7 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
               {d.lines.map((l, idx) => (
                 <View key={idx} style={styles.deliveryLine}>
                   <Text style={styles.deliveryLineName}>{l.itemName}</Text>
-                  <Text style={styles.deliveryLineQty}>{l.quantityUnits} {l.countUnit === "keg" ? "kegs" : l.countUnit + "(s)"}</Text>
+                  <Text style={styles.deliveryLineQty}>{l.quantityUnits} {l.countUnit === "keg" ? "kegs" : l.countUnit + "(s)"} · {l.invoiceLineCostPence == null ? "cost unknown" : fmtPence(l.invoiceLineCostPence)}</Text>
                 </View>
               ))}
               {d.notes ? <Text style={styles.deliveryNotes}>{d.notes}</Text> : null}
@@ -527,6 +666,18 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
     return s;
   }, [formItems, counts]);
 
+  const valuePreview = React.useMemo(() => {
+    let pence = 0, priced = 0, noCost = 0;
+    formItems.forEach((i) => {
+      const st = countLineState(counts[i.id]);
+      if (st !== "counted" && st !== "zero") return;
+      const c = costNum(i.unitCostPence);
+      if (c === null) { noCost += 1; return; }
+      pence += Number(counts[i.id]) * c; priced += 1;
+    });
+    return { pence, priced, noCost };
+  }, [formItems, counts]);
+
   const validate = (): boolean => {
     if (!periodStart || !periodEnd) { Alert.alert("Set dates", "Please set period start and end dates."); return false; }
     if (periodStart > periodEnd) { Alert.alert("Invalid dates", "Period end must be on or after the period start."); return false; }
@@ -591,6 +742,12 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
       const whole = Number.isFinite(cur) && cur > 0 ? Math.floor(cur) : 0;
       return { ...prev, [id]: String(whole + frac) };
     });
+  const addPack = (id: number, units: number) =>
+    setCounts((prev) => {
+      const cur = Number(prev[id]);
+      const base = prev[id] !== undefined && prev[id] !== "" && Number.isFinite(cur) && cur >= 0 ? cur : 0;
+      return { ...prev, [id]: String(Math.round((base + Number(units)) * 10000) / 10000) };
+    });
 
   if (showForm) {
     const q = search.trim().toLowerCase();
@@ -638,6 +795,12 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
               <Text style={cs.progressStats}>{summary.counted} stock · {summary.zero} zero · {summary.blank} blank{summary.invalid ? ` · ${summary.invalid} invalid` : ""}</Text>
             </View>
             <View style={cs.progressTrack}><View style={[cs.progressFill, { width: `${Math.round(pct * 100)}%` }]} /></View>
+            <Text style={[cs.progressStats, { marginTop: 6 }]} accessibilityLiveRegion="polite">
+              {valuePreview.priced
+                ? `Entered value (ex VAT, current cost): ${fmtPence(Math.round(valuePreview.pence))} for ${valuePreview.priced} priced item${valuePreview.priced === 1 ? "" : "s"}${valuePreview.noCost || summary.blank || summary.invalid ? " — partial" : ""}`
+                : "Entered value: unknown — no counted items have a cost"}
+              {valuePreview.noCost ? ` · ${valuePreview.noCost} without cost` : ""}{summary.blank ? ` · ${summary.blank} not counted` : ""}{summary.invalid ? ` · ${summary.invalid} invalid` : ""}. Cost is captured on submit.
+            </Text>
           </View>
 
           <View style={cs.searchRow}>
@@ -694,6 +857,11 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
                         {isKeg && [0.25, 0.5, 0.75].map((f) => (
                           <Pressable key={f} style={cs.chip} onPress={() => setFraction(item.id, f)} accessibilityRole="button" accessibilityLabel={`Set ${f} keg fraction for ${item.name}`}>
                             <Text style={cs.chipText}>{f === 0.25 ? "¼" : f === 0.5 ? "½" : "¾"}</Text>
+                          </Pressable>
+                        ))}
+                        {itemPacks(item).map((pk, pi) => (
+                          <Pressable key={`pk${pi}`} style={cs.chip} onPress={() => addPack(item.id, Number(pk.quantityUnits))} accessibilityRole="button" accessibilityLabel={`Add one ${pk.label}, ${pk.quantityUnits} ${unitWord(item.countUnit, Number(pk.quantityUnits))}, to ${item.name}`}>
+                            <Text style={cs.chipText}>+ {pk.label}</Text>
                           </Pressable>
                         ))}
                         <Pressable style={cs.chip} onPress={() => setQty(item.id, "0")} accessibilityRole="button" accessibilityLabel={`Mark ${item.name} as zero`}>
@@ -867,11 +1035,19 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
 
   const data = reportQuery.data ?? [];
   const grouped = categories
-    .map((c) => ({ cat: c, lines: data.filter((l) => l.categoryName === c.name) }))
+    .map((c) => ({ cat: c, lines: shown.filter((l) => l.categoryName === c.name) }))
     .filter((g) => g.lines.length > 0);
   const hasSquareData = data.some((l) => l.squareLinked);
   const linkedCount = data.filter((l) => l.squareLinked).length;
   const squareSalesError = data.find((l) => !l.squareSalesAvailable)?.squareSalesError;
+  const [rFilter, setRFilter] = useState<"all" | "shortage" | "surplus" | "incomplete">("all");
+  const isIncomplete = (l: ReportLine) => l.opening === null || l.closing === null || l.variance === null || costNum(l.consumedCostPence) === null || costNum(l.varianceValuePence) === null || costNum(l.grossProfitPence) === null || (l.financialWarnings?.length ?? 0) > 0;
+  const shown = data.filter((l) => rFilter === "all" ? true : rFilter === "shortage" ? l.variance !== null && l.variance > 0.005 : rFilter === "surplus" ? l.variance !== null && l.variance < -0.005 : isIncomplete(l));
+  const totals = ([
+    ["openingValuePence", "Opening value"], ["deliveredValuePence", "Delivered value"], ["closingValuePence", "Closing value"],
+    ["consumedCostPence", "Consumed cost"], ["netSalesPence", "Net sales"], ["grossProfitPence", "Gross profit"], ["varianceValuePence", "Variance cost (+ shortage)"],
+  ] as [keyof ReportLine, string][]).map(([k, label]) => ({ label, ...knownSum(data, k) }));
+  const anyMissingTotal = totals.some((t) => t.known < t.total);
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -908,6 +1084,25 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
             <Text style={[styles.reportSummaryText, { color: "#EF4444" }]}> POS sales unavailable: {squareSalesError}. Sold and variance are left blank.</Text>
           </View>
         )}
+        <Text style={styles.fieldHint}>All £ ex VAT, periodic weighted average cost. Gross profit uses physically consumed stock cost (shortages reduce it) — a stock margin, not a full P&L. Shortage/surplus is unexplained, not proven wastage.</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: 8 }}>
+          {totals.map((t) => (
+            <View key={t.label} style={{ minWidth: 140, flexGrow: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10, backgroundColor: colors.surface }}>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, textTransform: "uppercase" }}>{t.label}</Text>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.text, marginTop: 2 }}>{t.known ? fmtPence(Math.round(t.sum)) : "Unknown"}</Text>
+              {t.known > 0 && t.known < t.total && <Text style={{ fontSize: 11, color: "#D97706" }}>known {t.known}/{t.total} items only</Text>}
+            </View>
+          ))}
+        </View>
+        {anyMissingTotal && <Text style={[styles.fieldHint, { color: "#D97706" }]}>Some items have unknown values. Totals are known-value subtotals, not complete venue totals.</Text>}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }} accessibilityRole="radiogroup">
+          {(["all", "shortage", "surplus", "incomplete"] as const).map((f) => (
+            <Pressable key={f} onPress={() => setRFilter(f)} accessibilityRole="radio" accessibilityState={{ selected: rFilter === f }} style={{ paddingHorizontal: 12, paddingVertical: 8, minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: rFilter === f ? Colors.brand.gold : colors.border, backgroundColor: rFilter === f ? Colors.brand.gold : "transparent" }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: rFilter === f ? "#000" : colors.text }}>{{ all: "All", shortage: "Shortages", surplus: "Surpluses", incomplete: "Incomplete" }[f]}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {shown.length === 0 && <Text style={styles.emptyHint}>No items match this filter.</Text>}
         <View style={styles.reportSummaryBanner}>
           {hasSquareData
             ? <><Ionicons name="link" size={14} color="#22C55E" /><Text style={styles.reportSummaryText}> {linkedCount} of {data.length} items linked to Square POS</Text></>
@@ -931,6 +1126,11 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
                 <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Used</Text>
                 <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Sold{"\n"}(Square)</Text>
                 <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Variance</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Used{"\n"}cost</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Var £</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Net{"\n"}sales</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>GP</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Margin</Text>
               </View>
               {lines.map((l) => {
                 const varColor = l.variance === null ? "#555"
@@ -944,7 +1144,8 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
                         <Text style={styles.reportItemName}>{l.itemName}</Text>
                         {l.squareLinked && <Ionicons name="link" size={10} color="#22C55E" />}
                       </View>
-                      <Text style={styles.reportItemUnit}>{l.containerSize} · in {l.baseUnit === "pint" ? "pints" : l.baseUnit}</Text>
+                      <Text style={styles.reportItemUnit}>{l.containerSize} · in {l.baseUnit === "pint" ? "pints" : l.baseUnit} · {fmtPence(l.costPerBaseUnitPence)}/unit</Text>
+                      {(l.financialWarnings?.length ?? 0) > 0 && <Text style={[styles.reportItemUnit, { color: "#D97706" }]}>{l.financialWarnings!.join(" · ")}</Text>}
                     </View>
                     <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening ?? "–"}</Text>
                     <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.delivered}</Text>
@@ -956,6 +1157,11 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
                     <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum, { color: varColor, fontWeight: "700" }]}>
                       {l.variance !== null ? (l.variance > 0 ? `+${l.variance}` : String(l.variance)) : "–"}
                     </Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum]}>{fmtPence(l.consumedCostPence)}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum, { color: varColor }]} accessibilityLabel={`${varianceLabel(l.variance)} ${fmtPence(l.varianceValuePence)}`}>{costNum(l.varianceValuePence) !== null && Number(l.varianceValuePence) > 0 ? "+" : ""}{fmtPence(l.varianceValuePence)}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum]}>{fmtPence(l.netSalesPence)}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum]}>{fmtPence(l.grossProfitPence)}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum]}>{l.grossMarginPercent == null ? "Unknown" : `${Math.round(l.grossMarginPercent * 10) / 10}%`}</Text>
                   </View>
                 );
               })}
@@ -964,9 +1170,9 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
           {/* Variance legend */}
           {lines.some((l) => l.squareLinked) && (
             <View style={styles.varianceLegend}>
-              <Text style={[styles.varianceLegendItem, { color: "#F59E0B" }]}>+n = wastage/spillage</Text>
+              <Text style={[styles.varianceLegendItem, { color: "#F59E0B" }]}>+n = unexplained shortage</Text>
               <Text style={[styles.varianceLegendItem, { color: "#22C55E" }]}>0 = perfect</Text>
-              <Text style={[styles.varianceLegendItem, { color: "#EF4444" }]}>−n = count discrepancy</Text>
+              <Text style={[styles.varianceLegendItem, { color: "#EF4444" }]}>−n = unexplained surplus</Text>
             </View>
           )}
         </View>
@@ -985,6 +1191,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
   const [view, setView] = useState<CatView>("list");
   const [editItem, setEditItem] = useState<StockItem | null>(null);
   const [editServes, setEditServes] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editCostOrig, setEditCostOrig] = useState("");
   const [editActive, setEditActive] = useState(true);
   // POS link state in edit view
   const [variationSearch, setVariationSearch] = useState("");
@@ -1001,7 +1209,7 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
   });
 
   const patchMutation = useMutation({
-    mutationFn: async (payload: { id: number; servesPerUnit?: string; active?: boolean }) => {
+    mutationFn: async (payload: { id: number; servesPerUnit?: string; active?: boolean; unitCostPence?: string | null; costSource?: string | null; costDate?: string | null }) => {
       const { id, ...body } = payload;
       const res = await apiRequest("PATCH", `/api/stock/items/${id}`, body);
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
@@ -1050,6 +1258,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
   const handleEdit = (item: StockItem) => {
     setEditItem(item);
     setEditServes(item.servesPerUnit ?? "");
+    setEditCost(poundsInput(item.unitCostPence));
+    setEditCostOrig(poundsInput(item.unitCostPence));
     setEditActive(item.active);
     setVariationSearch("");
     setPendingVarId(item.squareCatalogVariationId ?? null);
@@ -1069,8 +1279,15 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
     if (pendingLinks.some((link) => !Number.isFinite(Number(link.soldUnitFactor)) || Number(link.soldUnitFactor) <= 0)) {
       return Alert.alert("Check POS quantities", "Each sale quantity must be greater than zero.");
     }
+    const pc = parsePounds(editCost, 4);
+    if (pc === undefined) return Alert.alert("Check cost", "Enter pounds, e.g. 1.15 or 0.9583 (max 4 decimal places).");
+    const costPatch = editCost.trim() === editCostOrig.trim() ? {} : {
+      unitCostPence: pc === null ? null : String(pc),
+      costSource: pc === null ? null : "manual",
+      costDate: pc === null ? null : localDateStr(new Date()),
+    };
     try {
-      await patchMutation.mutateAsync({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive });
+      await patchMutation.mutateAsync({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive, ...costPatch });
       await linksMutation.mutateAsync({ id: editItem.id, links: pendingLinks });
       await queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] });
       setView("list");
@@ -1159,6 +1376,14 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
             <Text style={[styles.formTitle, { marginBottom: 0, marginLeft: 10 }]}>{editItem.name}</Text>
           </View>
           <Text style={styles.fieldHint}>{editItem.containerSize} · {editItem.countUnit}{editItem.caseSize ? ` · case of ${editItem.caseSize}` : ""}</Text>
+
+          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Default cost per {editItem.countUnit}, £ ex VAT (manual)</Text>
+          <TextInput style={styles.input} value={editCost} onChangeText={setEditCost} keyboardType="decimal-pad" placeholder="Blank = unknown" placeholderTextColor="#666" accessibilityLabel={`Cost per ${editItem.countUnit} in pounds ex VAT`} />
+          <Text style={styles.fieldHint}>
+            Price of ONE {editItem.countUnit}, not a case.{(() => { const p = parsePounds(editCost, 4); return editItem.caseSize && typeof p === "number" ? ` Case of ${editItem.caseSize} ≈ ${fmtPence(p * editItem.caseSize)}.` : ""; })()} New cost applies to counts submitted from now; submitted counts keep their captured cost.
+            {editItem.costSource ? ` Current source: ${editItem.costSource}${editItem.costDate ? ` (${fmtDate(editItem.costDate)})` : ""}.` : ""}
+            {editItem.purchasePacks?.length ? ` Packs: ${editItem.purchasePacks.map((pk) => `${pk.label} = ${pk.quantityUnits}`).join(", ")} (edit packs on web).` : ""}
+          </Text>
 
           {editItem.countUnit === "keg" && (
             <>

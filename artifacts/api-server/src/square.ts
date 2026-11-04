@@ -1,3 +1,4 @@
+import { accumulateStockOrder } from "./stock-sales";
 import { createHash } from "node:crypto";
 
 const SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production"
@@ -2578,9 +2579,17 @@ export async function getSalesByVariation(
   startAt: string,
   endAt: string,
 ): Promise<Map<string, number>> {
-  if (!isConfigured()) return new Map();
+  return (await getStockSalesByVariation(startAt, endAt)).quantities;
+}
+
+export async function getStockSalesByVariation(startAt: string, endAt: string): Promise<{
+  quantities: Map<string, number>; netRevenuePence: Map<string, number | null>;
+}> {
+  if (!isConfigured()) throw new Error("Square POS is not configured.");
   const locationId = getLocationId();
   const totals = new Map<string, number>();
+  const revenue = new Map<string, number | null>();
+  const seen = new Set<string>();
   let cursor: string | undefined;
 
   do {
@@ -2602,17 +2611,16 @@ export async function getSalesByVariation(
     const data = await squareRequest("POST", "/v2/orders/search", body);
     const orders: any[] = data.orders || [];
     for (const order of orders) {
-      for (const line of (order.line_items || [])) {
-        const varId: string | undefined = line.catalog_object_id;
-        if (!varId) continue;
-        const qty = parseFloat(line.quantity || "1");
-        totals.set(varId, (totals.get(varId) ?? 0) + qty);
-      }
+      if (order.id && seen.has(order.id)) continue;
+      if (order.id) seen.add(order.id);
+      // Guard provider endpoint inclusivity: adjacent count periods must not overlap.
+      if (order.closed_at && (new Date(order.closed_at) < new Date(startAt) || new Date(order.closed_at) >= new Date(endAt))) continue;
+      accumulateStockOrder(order, totals, revenue);
     }
     cursor = data.cursor;
   } while (cursor);
 
-  return totals;
+  return { quantities: totals, netRevenuePence: revenue };
 }
 
 // Cancels a pending / in-progress terminal checkout. Used if staff need to

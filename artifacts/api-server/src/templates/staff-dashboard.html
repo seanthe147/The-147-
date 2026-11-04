@@ -436,6 +436,21 @@
       .sc-actions{bottom:-14px}.sc-actions .btn{flex:1 1 auto}
       .sc-hint{margin-left:0;flex-basis:100%}
     }
+    /* Stock tabs must not force an overflow-hidden ancestor to scroll sideways
+       when a narrow-screen user focuses a later tab. Tables scroll themselves. */
+    #pageStock .page-body{min-width:0;width:100%;overflow-x:clip}
+    #pageStock .menu-tabs{width:100%;max-width:100%;flex-wrap:wrap}
+    #pageStock .menu-refresh-bar{gap:12px;flex-wrap:wrap}
+    #pageStock .menu-refresh-bar>p{flex:1 1 230px;min-width:0}
+    #pageStock .menu-refresh-bar>div{max-width:100%}
+    #pageStock input,#pageStock select{max-width:100%;min-width:0}
+    #pageStock fieldset{min-width:0}
+    @media(max-width:480px){
+      #pageStock .page-body{padding:14px}
+      #pageStock .menu-tab{flex:1 1 100px;padding:8px}
+      #pageStock .sc-meta-grid{grid-template-columns:minmax(0,1fr)}
+      #pageStock .sc-hist-lines{grid-template-columns:minmax(0,1fr)}
+    }
     /* ── Toast ── */
     .toast-wrap{position:fixed;top:72px;right:24px;z-index:600;display:flex;flex-direction:column;gap:8px;pointer-events:none}
     .toast{padding:12px 18px;border-radius:var(--r);font-size:13px;font-weight:600;font-family:inherit;color:#fff;min-width:260px;max-width:340px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:10px;animation:tIn .25s ease;pointer-events:none}
@@ -2071,7 +2086,7 @@
                   <span id="stockCountProgressLabel" class="sc-progress-label">0 of 0 counted</span>
                   <span id="stockCountProgressStats" class="sc-progress-stats"></span>
                 </div>
-                <div class="sc-progress-bar" role="progressbar" aria-label="Count progress" id="stockCountProgressBar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="stockCountProgressFill"></span></div>
+                <div id="stockCountValuePreview" style="font-size:12px;color:var(--text-2);margin:4px 0" aria-live="polite"></div><div class="sc-progress-bar" role="progressbar" aria-label="Count progress" id="stockCountProgressBar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="stockCountProgressFill"></span></div>
               </div>
               <div class="sc-toolbar">
                 <div class="search-box sc-search">
@@ -2124,7 +2139,7 @@
                 </div>
                 <div class="form-group" style="margin:0">
                   <label class="form-label">Supplier</label>
-                  <input class="form-input" type="text" id="deliverySupplier" placeholder="e.g. Matthew Clark">
+                  <input class="form-input" type="text" id="deliverySupplier" list="stockSupplierOptions" placeholder="LWC, Molson Coors or other"><datalist id="stockSupplierOptions"><option value="LWC"><option value="Molson Coors"></datalist>
                 </div>
                 <div class="form-group" style="margin:0">
                   <label class="form-label">Invoice Ref (optional)</label>
@@ -2172,6 +2187,7 @@
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn btn-secondary btn-sm" onclick="openAutoLink()">🔗 Auto-link POS</button>
                 <button class="btn btn-secondary btn-sm" onclick="openPOSImport()">📥 Import from POS</button>
+                <button class="btn btn-secondary btn-sm" onclick="openInvoicePriceReview()">Review invoice prices</button>
                 <button class="btn btn-primary btn-sm" onclick="showAddStockItemForm()">+ Add Item</button>
               </div>
             </div>
@@ -2203,7 +2219,18 @@
                 </div>
                 <div class="form-group" style="margin:0">
                   <label class="form-label">Supplier (optional)</label>
-                  <input class="form-input" type="text" id="addItemSupplier" placeholder="e.g. Matthew Clark">
+                  <input class="form-input" type="text" id="addItemSupplier" list="stockSupplierOptions" placeholder="LWC, Molson Coors or other">
+                </div>
+                <div class="form-group" style="margin:0;grid-column:1/-1">
+                  <label class="form-label" for="addItemCost">Default cost per count unit, £ ex VAT (manual)</label>
+                  <input class="form-input" type="text" inputmode="decimal" id="addItemCost" placeholder="e.g. 112.50 per keg, 1.15 per bottle — blank = unknown" aria-describedby="addItemCostHelp" oninput="stockCostHelp('add')">
+                  <div id="addItemCostHelp" style="font-size:12px;color:var(--text-2);margin-top:4px"></div>
+                </div>
+                <div class="form-group" style="margin:0;grid-column:1/-1">
+                  <div class="form-label">Purchase packs (optional)</div>
+                  <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">How this product arrives, in count units. e.g. base keg 100L: "50L keg" = 0.5, "100L keg" = 1. Bottles: "Case of 24" = 24. Pack cost is £ ex VAT for the whole pack.</div>
+                  <div id="addItemPacks"></div>
+                  <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="stockAddPackRow('add')">+ Add pack</button>
                 </div>
               </div>
               <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2236,7 +2263,18 @@
                 </div>
                 <div class="form-group" style="margin:0;grid-column:span 2">
                   <label class="form-label">Supplier</label>
-                  <input class="form-input" type="text" id="editItemSupplier">
+                  <input class="form-input" type="text" id="editItemSupplier" list="stockSupplierOptions">
+                </div>
+                <div class="form-group" style="margin:0;grid-column:1/-1">
+                  <label class="form-label" for="editItemCost">Default cost per count unit, £ ex VAT (manual)</label>
+                  <input class="form-input" type="text" inputmode="decimal" id="editItemCost" placeholder="e.g. 112.50 per keg, 1.15 per bottle — blank = unknown" aria-describedby="editItemCostHelp" oninput="stockCostHelp('edit')">
+                  <div id="editItemCostHelp" style="font-size:12px;color:var(--text-2);margin-top:4px"></div>
+                </div>
+                <div class="form-group" style="margin:0;grid-column:1/-1">
+                  <div class="form-label">Purchase packs (optional)</div>
+                  <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">How this product arrives, in count units. e.g. base keg 100L: "50L keg" = 0.5, "100L keg" = 1. Bottles: "Case of 24" = 24. Pack cost is £ ex VAT for the whole pack.</div>
+                  <div id="editItemPacks"></div>
+                  <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="stockAddPackRow('edit')">+ Add pack</button>
                 </div>
               </div>
               <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:14px">
@@ -2280,6 +2318,13 @@
                 <button class="btn btn-secondary btn-sm" onclick="closeAutoLink()">Cancel</button>
                 <button class="btn btn-primary btn-sm" onclick="saveAutoLinks()">Save Confirmed Links</button>
               </div>
+            </div>
+
+            <div id="stockInvoicePricePanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px" role="region" aria-labelledby="stockInvoicePriceTitle">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px"><div id="stockInvoicePriceTitle" style="font-size:15px;font-weight:700">Invoice price review</div><button class="btn btn-secondary btn-sm" onclick="el('stockInvoicePricePanel').style.display='none'">Close</button></div>
+              <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">Verified supplier invoice prices (ex VAT). Pricing rule: Molson Coors brewery brands from Molson Coors, everything else from LWC. Choose the matching stock product and Apply — nothing is matched automatically and no deliveries are created. If a product isn't in the catalogue, add it first with "+ Add Item".</div>
+              <div id="stockInvoicePriceErr" class="modal-err" role="alert" style="display:none"></div>
+              <div id="stockInvoicePriceList"></div>
             </div>
 
             <div id="stockCatalogueContent"><div class="loading-state"><div class="spinner"></div>Loading items…</div></div>
@@ -9135,6 +9180,114 @@
     var map={keg:['keg','kegs'],bottle:['bottle','bottles'],can:['can','cans'],bib:['BIB','BIBs'],case:['case','cases']};
     var m=map[unit];return m?(one?m[0]:m[1]):(unit||'');
   }
+  function stockPence(p){
+    if(p===null||p===undefined||p===''||isNaN(Number(p)))return 'Unknown';
+    var n=Number(p)/100, neg=n<0, ab=Math.abs(n);
+    var dp=Math.abs(ab*100-Math.round(ab*100))>0.0001?4:2;
+    return (neg?'−':'')+'£'+ab.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:dp});
+  }
+  function stockCostNum(v){if(v===null||v===undefined||v==='')return null;var n=Number(v);return isNaN(n)?null:n;}
+  function stockParsePounds(raw,maxDp){
+    var t=String(raw||'').trim().replace(/^£/,'').replace(/,/g,'');
+    if(t==='')return {ok:true,pence:null};
+    var re=new RegExp('^\\d+(\\.\\d{1,'+(maxDp||2)+'})?$');
+    if(!re.test(t))return {ok:false};
+    var parts=t.split('.'),frac=((parts[1]||'')+'0000').slice(0,4);
+    var tenThou=Number(parts[0])*10000+Number(frac);
+    return {ok:true,pence:tenThou/100};
+  }
+  function stockPoundsInput(p){var n=stockCostNum(p);if(n===null)return '';var s=(n/100).toFixed(4);return s.replace(/(\.\d\d\d*?)0+$/,'$1');}
+  function stockCostHelp(kind){
+    var inp=el(kind+'ItemCost'),help=el(kind+'ItemCostHelp');if(!inp||!help)return;
+    var pr=stockParsePounds(inp.value,4);
+    var cs=parseInt(el(kind+'ItemCase').value,10);
+    var base='Price of ONE count unit (keg / bottle / can / BIB) ex VAT — not a case. Up to 4 decimal places allowed.'+(kind==='edit'?' Applies to counts submitted from now on; submitted counts keep their captured cost.':'');
+    if(!pr.ok){help.textContent='Enter pounds, e.g. 1.15 or 0.9583 (max 4 decimal places).';help.style.color='var(--red)';return;}
+    help.style.color='var(--text-2)';
+    help.textContent=base+(pr.pence!==null&&cs>0?' Case of '+cs+' ≈ '+stockPence(pr.pence*cs)+'.':'');
+  }
+  function stockPackRowHtml(pk){
+    pk=pk||{};
+    return '<div class="stock-pack-row" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:6px;margin-bottom:6px">'+
+      '<input class="form-input" data-pk="label" aria-label="Pack label" placeholder="Label e.g. 50L keg" value="'+escHtml(pk.label||'')+'">'+
+      '<input class="form-input" data-pk="units" inputmode="decimal" aria-label="Count units per pack" placeholder="Units e.g. 0.5" value="'+escHtml(pk.quantityUnits!=null?String(pk.quantityUnits):'')+'">'+
+      '<input class="form-input" data-pk="cost" inputmode="decimal" aria-label="Pack cost £ ex VAT" placeholder="£ pack" value="'+escHtml(stockPoundsInput(pk.costPence))+'">'+
+      '<input class="form-input" data-pk="code" aria-label="Supplier code" placeholder="Code" value="'+escHtml(pk.supplierCode||'')+'">'+
+      '<button type="button" class="btn btn-secondary btn-sm" aria-label="Remove pack" onclick="this.parentNode.remove()">×</button></div>';
+  }
+  function stockSetPacks(kind,packs){var w=el(kind+'ItemPacks');if(w)w.innerHTML=(packs||[]).map(stockPackRowHtml).join('');}
+  function stockAddPackRow(kind){var w=el(kind+'ItemPacks');if(!w)return;var t=document.createElement('div');t.innerHTML=stockPackRowHtml({});var r=t.firstChild;w.appendChild(r);r.querySelector('input').focus();}
+  function stockReadPacks(kind){
+    var out=[],err=null;
+    document.querySelectorAll('#'+kind+'ItemPacks .stock-pack-row').forEach(function(r){
+      var g=function(k){return r.querySelector('[data-pk="'+k+'"]').value.trim();};
+      var label=g('label'),units=g('units'),cost=g('cost'),code=g('code');
+      if(!label&&!units&&!cost&&!code)return;
+      var u=Number(units),pc=stockParsePounds(cost,4);
+      if(!label||!(u>0)){err='Each pack needs a label and units greater than 0.';return;}
+      if(!pc.ok){err='Pack cost must be pounds, e.g. 112.50.';return;}
+      var o={label:label,quantityUnits:u,costPence:pc.pence};if(code)o.supplierCode=code;out.push(o);
+    });
+    return {packs:out,err:err};
+  }
+  function stockItemPacks(item){return item&&Array.isArray(item.purchasePacks)?item.purchasePacks.filter(function(p){return p&&Number(p.quantityUnits)>0;}):[];}
+  function stockAddPackToCount(id,units){
+    var inp=document.getElementById('scQty'+id);if(!inp)return;
+    var cur=Number(inp.value);if(inp.value===''||isNaN(cur)||cur<0)cur=0;
+    inp.value=String(Math.round((cur+Number(units))*10000)/10000);updateStockCountProgress();inp.focus();
+  }
+  var _invoicePriceRows=[];
+  async function openInvoicePriceReview(){
+    var pnl=el('stockInvoicePricePanel'),list=el('stockInvoicePriceList'),err=el('stockInvoicePriceErr');
+    pnl.style.display='';err.style.display='none';
+    el('stockAddItemForm').style.display='none';el('stockEditItemForm').style.display='none';
+    list.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading invoice prices…</div>';
+    try{
+      var d=await (await api('/api/stock/invoice-prices')).json();
+      _invoicePriceRows=(d&&d.rows)||[];
+      renderInvoicePriceRows();
+    }catch(e){list.innerHTML='<p style="color:var(--red);font-size:13px">Could not load invoice prices: '+escHtml(e.message||'unknown')+'</p><button class="btn btn-secondary btn-sm" onclick="openInvoicePriceReview()">Retry</button>';}
+    pnl.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+  function renderInvoicePriceRows(){
+    var list=el('stockInvoicePriceList');
+    if(!_invoicePriceRows.length){list.innerHTML='<p style="color:var(--text-2);font-size:13px">No invoice prices awaiting review.</p>';return;}
+    var allOpts=_stockItems.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).map(function(i){return '<option value="'+i.id+'">'+escHtml(i.name)+(i.containerSize?' · '+escHtml(i.containerSize):'')+' ('+escHtml(i.countUnit||'')+')</option>';}).join('');
+    list.innerHTML=_invoicePriceRows.map(function(r,ix){
+      var m=r.matches||[];
+      var perUnit=r.packCostPence!=null&&Number(r.packUnits)>0?stockPence(Number(r.packCostPence)/Number(r.packUnits)):'Unknown';
+      return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">'+
+        '<div style="font-weight:700;font-size:14px">'+escHtml(r.name)+'</div>'+
+        '<div style="font-size:12px;color:var(--text-2);margin:2px 0 8px">'+escHtml(r.supplier||'Supplier unknown')+(r.supplierCode?' #'+escHtml(r.supplierCode):'')+' · '+escHtml(r.packLabel||'pack')+
+        (r.kind==='keg'?'': ' = '+escHtml(String(r.packUnits))+' count unit'+(Number(r.packUnits)===1?'':'s'))+
+        ' · '+stockPence(r.packCostPence)+' per pack ex VAT '+(r.kind==='keg'?'(converted to the catalogue keg size on apply)':'('+perUnit+' per unit)')+
+        (r.invoiceDate?' · invoice '+escHtml(stockFmtDate(r.invoiceDate)):'')+'</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+          '<label class="sr-only" for="invPick'+ix+'">Stock product for '+escHtml(r.name)+'</label>'+
+          '<select class="form-input" id="invPick'+ix+'" style="flex:1;min-width:220px">'+
+            '<option value="">Choose product…</option>'+
+            (m.length?'<optgroup label="Suggested matches">'+m.map(function(x){return '<option value="'+x.id+'">'+escHtml(x.name)+(x.containerSize?' · '+escHtml(x.containerSize):'')+' ('+escHtml(x.countUnit||'')+')</option>';}).join('')+'</optgroup>':'')+
+            '<optgroup label="All catalogue products">'+allOpts+'</optgroup></select>'+
+          '<button type="button" class="btn btn-primary btn-sm" id="invApply'+ix+'" onclick="applyInvoicePrice('+ix+')">Apply</button>'+
+        '</div>'+(m.length?'':'<div style="font-size:12px;color:#D97706;margin-top:6px">No suggested match. Pick a product explicitly, or add it with "+ Add Item" first.</div>')+
+      '</div>';
+    }).join('');
+  }
+  async function applyInvoicePrice(ix){
+    var r=_invoicePriceRows[ix],sel=el('invPick'+ix),err=el('stockInvoicePriceErr');err.style.display='none';
+    var id=parseInt(sel.value,10);
+    if(!id){err.textContent='Choose a stock product for '+r.name+' first.';err.style.display='';sel.focus();return;}
+    var item=_stockItems.find(function(i){return i.id===id;});
+    if(!confirm('Apply '+r.name+' ('+(r.packLabel||'pack')+', '+stockPence(r.packCostPence)+' ex VAT) to "'+(item?item.name:'#'+id)+'"?\n\nThis updates the catalogue cost and pack. Submitted counts keep their captured cost.'))return;
+    var btn=el('invApply'+ix);if(btn)btn.disabled=true;
+    try{
+      var res=await api('/api/stock/invoice-prices',{method:'POST',body:JSON.stringify({key:r.key,stockItemId:id})});
+      var upd=await res.json().catch(function(){return null;});
+      if(upd&&upd.id){var k=_stockItems.findIndex(function(i){return i.id===upd.id;});if(k>=0)_stockItems[k]=Object.assign({},_stockItems[k],upd);}
+      else{try{_stockItems=(await (await api('/api/stock/items')).json())||_stockItems;}catch(_){}}
+      _invoicePriceRows.splice(ix,1);renderInvoicePriceRows();renderStockCatalogue();toast('Invoice price applied');
+    }catch(e){err.textContent='Failed: '+(e.message||'unknown error');err.style.display='';if(btn)btn.disabled=false;}
+  }
   async function renderStockCounts(){
     var wrap=el('stockCountsContent');
     if(!wrap)return;
@@ -9164,8 +9317,10 @@
               (submitted?'':'<button class="btn btn-primary btn-sm" onclick="editStockCount('+c.id+')">Continue draft</button>')+
             '</div></div>'+
           (c.notes?'<div class="sc-hist-notes">'+escHtml(c.notes)+'</div>':'')+
+          (submitted&&lines.length?(function(){var known=0,unk=0;lines.forEach(function(l){var cp=stockCostNum(l.unitCostPence);if(cp===null)unk++;else known+=Number(l.quantityUnits)*cp;});
+            return '<div class="sc-hist-notes">Snapshot value at submission (ex VAT): '+(lines.length-unk?stockPence(Math.round(known))+(unk?' — known subtotal; '+unk+' item'+(unk===1?'':'s')+' with no captured cost':''):'unknown (no cost captured for this count)')+'</div>';})():'')+
           (open?'<div class="sc-hist-lines" id="scHistLines'+c.id+'">'+lines.map(function(l){
-            return '<div class="sc-hist-line"><span>'+escHtml(l.itemName||('Item #'+l.stockItemId))+'</span><b>'+stockFmtQty(l.quantityUnits)+' '+escHtml(stockUnitWord(l.countUnit,l.quantityUnits))+'</b></div>';
+            return '<div class="sc-hist-line"><span>'+escHtml(l.itemName||('Item #'+l.stockItemId))+'</span><b>'+stockFmtQty(l.quantityUnits)+' '+escHtml(stockUnitWord(l.countUnit,l.quantityUnits))+(submitted?' <span style="font-weight:400;color:var(--text-2)">@ '+(stockCostNum(l.unitCostPence)===null?'cost unknown':stockPence(l.unitCostPence))+'</span>':'')+'</b></div>';
           }).join('')+'</div>':'')+
         '</div>';
       });
@@ -9190,6 +9345,9 @@
         '<button type="button" class="sc-chip" onclick="setStockKegFraction('+item.id+',0.5)" aria-label="Set half keg fraction for '+escHtml(item.name)+'">½</button>'+
         '<button type="button" class="sc-chip" onclick="setStockKegFraction('+item.id+',0.75)" aria-label="Set three quarter keg fraction for '+escHtml(item.name)+'">¾</button>';
     }
+    stockItemPacks(item).forEach(function(pk){
+      foot+='<button type="button" class="sc-chip" onclick="stockAddPackToCount('+item.id+','+Number(pk.quantityUnits)+')" aria-label="Add one '+escHtml(pk.label)+' ('+Number(pk.quantityUnits)+' '+escHtml(stockUnitWord(item.countUnit,pk.quantityUnits))+') to '+escHtml(item.name)+'">+ '+escHtml(pk.label)+'</button>';
+    });
     foot+='<button type="button" class="sc-chip" onclick="setStockCountZero('+item.id+')" aria-label="Mark '+escHtml(item.name)+' as zero in stock">Mark 0</button>'+
       '<span class="sc-hint" id="scHint'+item.id+'">'+hint+'</span>';
     var unit=stockUnitWord(item.countUnit,2);
@@ -9270,6 +9428,20 @@
     var done=counted+zero, pct=total?done/total:0;
     var lbl=el('stockCountProgressLabel');if(lbl)lbl.textContent=done+' of '+total+' counted';
     var stats=el('stockCountProgressStats');if(stats)stats.textContent=counted+' with stock · '+zero+' zero · '+blank+' not counted'+(invalid?' · '+invalid+' invalid':'');
+    var valPence=0,noCost=0;
+    inputs.forEach(function(inp){
+      var st=stockRowState(inp);if(st!=='counted'&&st!=='zero')return;
+      var it=_stockItems.find(function(i){return i.id===parseInt(inp.dataset.itemId,10);});
+      var c=stockCostNum(it&&it.unitCostPence);
+      if(c===null){noCost++;return;}
+      valPence+=Number(inp.value)*c;
+    });
+    var vEl=el('stockCountValuePreview');
+    if(vEl){
+      var priced=counted+zero-noCost;
+      vEl.textContent=(priced?'Entered stock value (ex VAT, current catalogue cost): '+stockPence(Math.round(valPence))+' for '+priced+' priced item'+(priced===1?'':'s')+(noCost||blank||invalid?' — partial, not a full total':''):'Entered stock value: unknown — no counted items have a catalogue cost')+
+        (noCost?' · '+noCost+' counted without a cost (not valued)':'')+(blank?' · '+blank+' not counted (not valued)':'')+(invalid?' · '+invalid+' invalid (not valued)':'')+'. Cost is captured when the count is submitted.';
+    }
     var fill=el('stockCountProgressFill');if(fill)fill.style.transform='scaleX('+pct+')';
     var bar=el('stockCountProgressBar');if(bar)bar.setAttribute('aria-valuenow',String(Math.round(pct*100)));
     return {total:total,counted:counted,zero:zero,blank:blank,invalid:invalid};
@@ -9381,6 +9553,10 @@
             '<button class="btn btn-secondary btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteDelivery('+d.id+')">Delete</button>'+
           '</div>'+
           '<div style="font-size:12px;color:var(--text-2)">'+lineCount+' item'+(lineCount===1?'':'s')+(d.invoiceRef?' · Inv: '+escHtml(d.invoiceRef):'')+(d.enteredBy?' · by '+escHtml(d.enteredBy):'')+' · '+Math.round(totalUnits*10)/10+' units total</div>'+
+          (function(){var ls=d.lines||[],known=0,unk=0;ls.forEach(function(l){if(l.invoiceLineCostPence==null)unk++;else known+=Number(l.invoiceLineCostPence);});
+            return '<div style="font-size:12px;color:var(--text-2);margin-top:4px">Invoice cost (ex VAT): '+(ls.length-unk?stockPence(known)+(unk?' for '+(ls.length-unk)+' of '+ls.length+' lines — '+unk+' line'+(unk===1?'':'s')+' unknown':''):'unknown')+'</div>'+
+              (ls.length?'<details style="margin-top:6px;font-size:12px"><summary style="cursor:pointer">Lines</summary>'+ls.map(function(l){var it=_stockItems.find(function(i){return i.id===l.stockItemId;});
+                return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)"><span>'+escHtml(l.itemName||(it&&it.name)||('Item #'+l.stockItemId))+' · '+stockFmtQty(l.quantityUnits)+' '+escHtml(stockUnitWord(l.countUnit||(it&&it.countUnit),l.quantityUnits))+'</span><b>'+(l.invoiceLineCostPence==null?'Cost unknown':stockPence(l.invoiceLineCostPence))+'</b></div>';}).join('')+'</details>':'');})()+
           (d.notes?'<div style="font-size:12px;color:var(--text-2);margin-top:4px">'+escHtml(d.notes)+'</div>':'')+
         '</div>';
       });
@@ -9399,21 +9575,39 @@
       var catItems=_stockItems.filter(function(i){return i.categoryId===cat.id&&i.active!==false;});
       if(!catItems.length)return;
       html+='<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin:10px 0 6px">'+escHtml(cat.name)+'</div>';
-      html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:4px">';
+      html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:8px;margin-bottom:4px">';
       catItems.forEach(function(item){
         var cs=item.caseSize||0;
         var unitLabel=cs?('cases ×'+cs):(item.countUnit||'');
-        html+='<div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+        var packs=stockItemPacks(item);
+        html+='<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
           '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(item.name)+'</div>'+
-          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-del-item-id="'+item.id+'" data-case-size="'+cs+'" placeholder="0">'+
-          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(unitLabel)+'</span>'+
+          '<label class="sr-only" for="delQty'+item.id+'">Quantity delivered for '+escHtml(item.name)+'</label>'+
+          '<input type="number" min="0" step="any" id="delQty'+item.id+'" style="width:64px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-del-item-id="'+item.id+'" data-case-size="'+cs+'" placeholder="0" oninput="stockDelSuggest('+item.id+')">'+
+          (packs.length?'<label class="sr-only" for="delPack'+item.id+'">Pack for '+escHtml(item.name)+'</label><select id="delPack'+item.id+'" style="padding:4px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:110px" onchange="stockDelSuggest('+item.id+')"><option value="">'+escHtml(unitLabel)+'</option>'+packs.map(function(pk,pi){return '<option value="'+pi+'">'+escHtml(pk.label)+'</option>';}).join('')+'</select>':'<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(unitLabel)+'</span>')+
+          '<label class="sr-only" for="delCost'+item.id+'">Invoice line total £ ex VAT for '+escHtml(item.name)+'</label>'+
+          '<input type="text" inputmode="decimal" id="delCost'+item.id+'" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" placeholder="£ line" title="Invoice line TOTAL £ ex VAT" oninput="this.dataset.touched=\'1\'">'+
+          '<div id="delConv'+item.id+'" style="flex-basis:100%;font-size:11px;color:var(--text-2)"></div>'+
         '</div>';
       });
       html+='</div>';
     });
-    el('deliveryItemsWrap').innerHTML=html;
+    el('deliveryItemsWrap').innerHTML='<p style="font-size:12px;color:var(--text-2);margin:0 0 6px">Enter quantity (choose a pack if listed), then the invoice line TOTAL £ ex VAT for that product. A suggested total from the catalogue pack price is filled in — always check it against the invoice. Blank £ stays unknown, not £0.</p>'+html;
   }
 
+  function stockDelSuggest(id){
+    var it=_stockItems.find(function(i){return i.id===id;});if(!it)return;
+    var q=Number((el('delQty'+id)||{}).value),sel=el('delPack'+id),conv=el('delConv'+id),cost=el('delCost'+id);
+    var pk=sel&&sel.value!==''?stockItemPacks(it)[Number(sel.value)]:null;
+    if(!conv)return;
+    if(!(q>0)){conv.textContent='';return;}
+    var units=pk?q*Number(pk.quantityUnits):(it.caseSize?q*it.caseSize:q);
+    var sug=null;
+    if(pk&&stockCostNum(pk.costPence)!==null)sug=stockCostNum(pk.costPence)*q;
+    else if(stockCostNum(it.unitCostPence)!==null)sug=stockCostNum(it.unitCostPence)*units;
+    conv.textContent='= '+stockFmtQty(units)+' '+stockUnitWord(it.countUnit,units)+(sug!==null?' · suggested '+stockPence(Math.round(sug))+' (check invoice)':'');
+    if(cost&&!cost.dataset.touched&&sug!==null)cost.value=(Math.round(sug)/100).toFixed(2);
+  }
   function cancelDelivery(){el('stockDeliveryForm').style.display='none';}
 
   async function deleteDelivery(id){
@@ -9428,15 +9622,26 @@
     var errEl=el('stockDeliveryFormErr');errEl.style.display='none';
     var deliveredAt=el('deliveryDate').value;
     if(!deliveredAt){errEl.textContent='Please set the delivery date.';errEl.style.display='';return;}
-    var lines=[];
+    var lines=[],costErr=[],orphanCost=[];
     document.querySelectorAll('#deliveryItemsWrap [data-del-item-id]').forEach(function(inp){
       var val=parseFloat(inp.value);
+      var id=parseInt(inp.dataset.delItemId);
+      var cInp=el('delCost'+id), pr=stockParsePounds(cInp?cInp.value:'',2);
+      var it=_stockItems.find(function(i){return i.id===id;}),nm=it?it.name:('Item #'+id);
       if(!isNaN(val)&&val>0){
+        if(!pr.ok){costErr.push(nm);return;}
+        var sel=el('delPack'+id), pk=sel&&sel.value!==''?stockItemPacks(it)[Number(sel.value)]:null;
         var cs=parseInt(inp.dataset.caseSize||'0');
-        if(cs>0)lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityCases:String(val)});
-        else lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityUnits:String(val)});
-      }
+        var line;
+        if(pk)line={stockItemId:id,quantityUnits:String(Math.round(val*Number(pk.quantityUnits)*10000)/10000)};
+        else if(cs>0)line={stockItemId:id,quantityCases:String(val)};
+        else line={stockItemId:id,quantityUnits:String(val)};
+        line.invoiceLineCostPence=pr.pence===null?null:Math.round(pr.pence);
+        lines.push(line);
+      }else if(pr.ok&&pr.pence!==null)orphanCost.push(nm);
     });
+    if(costErr.length){errEl.textContent='Invalid £ amount (use e.g. 245.60): '+costErr.slice(0,5).join(', ');errEl.style.display='';return;}
+    if(orphanCost.length){errEl.textContent='A £ cost was entered without a quantity: '+orphanCost.slice(0,5).join(', ');errEl.style.display='';return;}
     if(!lines.length){errEl.textContent='Enter at least one delivery quantity.';errEl.style.display='';return;}
     _stockDeliverySaving=true;
     try{
@@ -9447,6 +9652,13 @@
     finally{_stockDeliverySaving=false;}
   }
 
+  var _stockReportRows=[], _stockReportFilter='all';
+  function stockSignedQty(v){if(v===null||v===undefined)return '—';var n=Math.round(Number(v)*100)/100;return (n>0?'+':n<0?'−':'')+Math.abs(n);}
+  function stockVarLabel(v){if(v===null||v===undefined)return 'Not calculated';if(Math.abs(v)<0.005)return 'Balanced';return v>0?'Unexplained shortage':'Unexplained surplus';}
+  function stockRowIncomplete(r){return r.opening===null||r.closing===null||r.variance===null||r.consumedCostPence===null||r.varianceValuePence===null||r.grossProfitPence===null||(r.financialWarnings&&r.financialWarnings.length>0);}
+  function setStockReportFilter(f){_stockReportFilter=f;document.querySelectorAll('[data-sr-filter]').forEach(function(b){var on=b.dataset.srFilter===f;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));});renderStockReportTable();}
+  function stockKnownSum(rows,key){var s=0,k=0;rows.forEach(function(r){var v=r[key];if(v!==null&&v!==undefined&&!isNaN(Number(v))){s+=Number(v);k++;}});return {sum:s,known:k,total:rows.length};}
+  function stockTotalCell(t){return t.known?stockPence(Math.round(t.sum))+(t.known<t.total?'<div style="font-size:11px;color:#D97706;font-weight:500">known '+t.known+'/'+t.total+' items only</div>':''):'Unknown';}
   async function runStockReport(){
     var start=el('reportPeriodStart').value, end=el('reportPeriodEnd').value;
     var wrap=el('stockReportContent');
@@ -9454,43 +9666,80 @@
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Running report…</div>';
     try{
       var data=await (await api('/api/stock/report?periodStart='+encodeURIComponent(start)+'&periodEnd='+encodeURIComponent(end))).json();
-      if(!data||!data.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No data for this period. Ensure stock counts have been submitted.</p>';return;}
-      var lastCat='';
-      var html='<p>Reconciled between counts: '+escHtml(new Date(data[0].actualPeriodStart).toLocaleString('en-GB'))+' – '+escHtml(new Date(data[0].actualPeriodEnd).toLocaleString('en-GB'))+'. Blank count entries are unknown, not zero.</p>'+
-        (data.some(function(r){return !r.squareSalesAvailable;})?'<p style="color:var(--red)">Square sales unavailable. Sold and variance are not calculated.</p>':'')+
-        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
-        '<thead><tr style="border-bottom:2px solid var(--border);text-align:left">'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700">Item</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Opening</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Delivered</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Closing</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Consumed</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Sold (POS)</th>'+
-          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Variance</th>'+
-        '</tr></thead><tbody>';
-      data.forEach(function(row){
-        if(row.categoryName!==lastCat){
-          lastCat=row.categoryName;
-          html+='<tr><td colspan="7" style="padding:10px 10px 4px;font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;background:#F8FAFC">'+escHtml(row.categoryName)+'</td></tr>';
-        }
-        var varColor=row.variance===null?'var(--text-2)':row.variance>1?'#DC2626':row.variance<-1?'#16A34A':'var(--text)';
-        html+='<tr style="border-bottom:1px solid var(--border)">'+
-          '<td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(row.baseUnit||row.countUnit||'')+(row.baseUnit==='pint'?'s':'')+'</span></td>'+
-          '<td style="padding:8px 10px;text-align:right">'+(row.opening===null?'Not counted':row.opening)+'</td>'+
-          '<td style="padding:8px 10px;text-align:right">'+row.delivered+'</td>'+
-          '<td style="padding:8px 10px;text-align:right">'+(row.closing===null?'Not counted':row.closing)+'</td>'+
-          '<td style="padding:8px 10px;text-align:right;font-weight:600">'+(row.consumed===null?'Missing count':row.consumed)+'</td>'+
-          '<td style="padding:8px 10px;text-align:right;color:var(--text-2)">'+
-            (row.sold!==null?row.sold:'<span style="color:var(--text-2);font-size:11px">'+(row.squareLinked?'unavailable':'not linked')+'</span>')+
-          '</td>'+
-          '<td style="padding:8px 10px;text-align:right;font-weight:600;color:'+varColor+'">'+
-            (row.variance!==null?(row.variance>0?'+':'')+row.variance:'—')+
-          '</td>'+
-        '</tr>';
-      });
-      html+='</tbody></table></div>';
-      wrap.innerHTML=html;
-    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Report failed: '+escHtml(e.message||'unknown error')+'</p>';}
+      _stockReportRows=Array.isArray(data)?data:[];
+      if(!_stockReportRows.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No data for this period. Ensure stock counts have been submitted.</p>';return;}
+      var d0=_stockReportRows[0];
+      wrap.innerHTML='<p style="font-size:13px">Reconciled between counts: '+escHtml(new Date(d0.actualPeriodStart).toLocaleString('en-GB'))+' – '+escHtml(new Date(d0.actualPeriodEnd).toLocaleString('en-GB'))+'. Blank count entries are unknown, not zero.</p>'+
+        '<p style="font-size:12px;color:var(--text-2)">All £ ex VAT. Valuation: periodic weighted average (opening snapshot cost + delivery invoice costs). Gross profit uses physically consumed stock cost, so unexplained shortages reduce it. This is a stock margin view, not a full P&amp;L. Shortage/surplus means unexplained by counts, deliveries and POS sales — not proven wastage.</p>'+
+        (_stockReportRows.some(function(r){return !r.squareSalesAvailable;})?'<p style="color:var(--red);font-size:13px">Square sales unavailable for some items. Sold, variance and revenue are not calculated for them.</p>':'')+
+        '<div id="stockReportSummary"></div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:12px 0" role="group" aria-label="Filter report rows">'+
+          ['all:All','shortage:Shortages','surplus:Surpluses','incomplete:Incomplete'].map(function(x){var p=x.split(':');return '<button type="button" class="filter-pill" data-sr-filter="'+p[0]+'" aria-pressed="false" onclick="setStockReportFilter(\''+p[0]+'\')">'+p[1]+'</button>';}).join('')+
+          '<button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="exportStockReportCsv()">Export CSV</button>'+
+        '</div><div id="stockReportTable" aria-live="polite"></div>';
+      setStockReportFilter(_stockReportFilter);
+    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Report failed: '+escHtml(e.message||'unknown error')+'</p><button class="btn btn-secondary btn-sm" onclick="runStockReport()">Retry</button>';}
+  }
+  function renderStockReportTable(){
+    var wrap=el('stockReportTable');if(!wrap)return;
+    var all=_stockReportRows;
+    var rows=all.filter(function(r){
+      if(_stockReportFilter==='shortage')return r.variance!==null&&r.variance>0.005;
+      if(_stockReportFilter==='surplus')return r.variance!==null&&r.variance<-0.005;
+      if(_stockReportFilter==='incomplete')return stockRowIncomplete(r);
+      return true;});
+    var sm=el('stockReportSummary');
+    if(sm){
+      var keys=[['openingValuePence','Opening value'],['deliveredValuePence','Delivered value'],['closingValuePence','Closing value'],['consumedCostPence','Consumed cost'],['netSalesPence','Net sales'],['grossProfitPence','Gross profit'],['varianceValuePence','Variance cost (+ shortage)']];
+      var anyMissing=false;
+      sm.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">'+keys.map(function(k){var t=stockKnownSum(all,k[0]);if(t.known<t.total)anyMissing=true;
+        return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px">'+k[1]+'</div><div style="font-size:16px;font-weight:700;margin-top:4px">'+stockTotalCell(t)+'</div></div>';}).join('')+'</div>'+
+        (anyMissing?'<p role="note" style="font-size:12px;color:#D97706;margin:8px 0 0">Some items have unknown values. Totals above are known-value subtotals only, not complete venue totals.</p>':'');
+    }
+    if(!rows.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No rows match this filter.</p>';return;}
+    var th=function(t,r){return '<th scope="col" style="padding:8px 10px;color:var(--text-2);font-weight:700;'+(r?'text-align:right':'')+'">'+t+'</th>';};
+    var td=function(v,extra){return '<td style="padding:8px 10px;text-align:right;'+(extra||'')+'">'+v+'</td>';};
+    var q=function(v,miss){return v===null||v===undefined?'<span style="color:var(--text-2)">'+miss+'</span>':escHtml(String(Math.round(Number(v)*100)/100));};
+    var lastCat='';
+    var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="border-bottom:2px solid var(--border);text-align:left">'+
+      th('Item')+th('Opening',1)+th('Delivered',1)+th('Closing',1)+th('Consumed',1)+th('Sold (POS)',1)+th('Variance',1)+th('Cost / unit',1)+th('Consumed cost',1)+th('Variance £',1)+th('Net sales',1)+th('Gross profit',1)+th('Margin',1)+'</tr></thead><tbody>';
+    rows.forEach(function(row){
+      if(row.categoryName!==lastCat){lastCat=row.categoryName;html+='<tr><td colspan="13" style="padding:10px 10px 4px;font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;background:var(--bg)">'+escHtml(row.categoryName||'')+'</td></tr>';}
+      var v=row.variance, vc=v===null?'var(--text-2)':v>0.005?'#DC2626':v<-0.005?'#16A34A':'var(--text)';
+      var unit=(row.baseUnit||row.countUnit||'')+(row.baseUnit==='pint'?'s':'');
+      html+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(unit)+'</span>'+
+        ((row.financialWarnings||[]).length?'<div style="font-size:11px;color:#D97706;font-weight:400">'+row.financialWarnings.map(escHtml).join(' · ')+'</div>':'')+'</td>'+
+        td(q(row.opening,'Not counted'))+td(q(row.delivered,'—'))+td(q(row.closing,'Not counted'))+td(q(row.consumed,'Missing count'),'font-weight:600')+
+        td(row.sold!==null&&row.sold!==undefined?q(row.sold):'<span style="color:var(--text-2);font-size:11px">'+(row.squareLinked?'unavailable':'not linked')+'</span>')+
+        td('<span style="color:'+vc+';font-weight:600">'+stockSignedQty(v)+'</span><div style="font-size:11px;color:var(--text-2)">'+stockVarLabel(v)+'</div>')+
+        td(row.costPerBaseUnitPence===null||row.costPerBaseUnitPence===undefined?'Unknown':stockPence(Number(row.costPerBaseUnitPence)))+
+        td(stockPence(row.consumedCostPence))+
+        td(row.varianceValuePence===null||row.varianceValuePence===undefined?'Unknown':'<span style="color:'+vc+'">'+(row.varianceValuePence>0?'+':'')+stockPence(row.varianceValuePence)+'</span>')+
+        td(stockPence(row.netSalesPence))+td(stockPence(row.grossProfitPence))+
+        td(row.grossMarginPercent===null||row.grossMarginPercent===undefined?'Unknown':(Math.round(row.grossMarginPercent*10)/10)+'%')+'</tr>';
+    });
+    wrap.innerHTML=html+'</tbody></table></div>';
+  }
+  function stockCsvCell(v){
+    if(v===null||v===undefined)return '';
+    var s=String(v);
+    if(/^[=+\-@\t\r]/.test(s)&&!/^-?\d+(\.\d+)?$/.test(s))s="'"+s;
+    return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  }
+  function exportStockReportCsv(){
+    if(!_stockReportRows.length)return;
+    var p=function(v){return v===null||v===undefined?'UNKNOWN':(Number(v)/100).toFixed(2);};
+    var n=function(v){return v===null||v===undefined?'UNKNOWN':String(Math.round(Number(v)*1000)/1000);};
+    var cols=['Category','Item','Base unit','Opening qty','Delivered qty','Closing qty','Consumed qty','Sold POS qty','Variance qty (+ shortage)','Variance status','Cost per base unit GBP ex VAT','Opening value GBP','Delivered value GBP','Closing value GBP','Consumed cost GBP','Expected sales cost GBP','Variance value GBP (+ shortage)','Net sales GBP ex VAT','Gross profit GBP','Gross margin %','Valuation method','Warnings'];
+    var lines=[cols.map(stockCsvCell).join(',')];
+    _stockReportRows.forEach(function(r){
+      lines.push([r.categoryName,r.itemName,r.baseUnit||r.countUnit,n(r.opening),n(r.delivered),n(r.closing),n(r.consumed),n(r.sold),n(r.variance),stockVarLabel(r.variance),p(r.costPerBaseUnitPence),p(r.openingValuePence),p(r.deliveredValuePence),p(r.closingValuePence),p(r.consumedCostPence),p(r.expectedSalesCostPence),p(r.varianceValuePence),p(r.netSalesPence),p(r.grossProfitPence),r.grossMarginPercent==null?'UNKNOWN':(Math.round(r.grossMarginPercent*10)/10),r.valuationMethod||'',(r.financialWarnings||[]).join('; ')].map(stockCsvCell).join(','));
+    });
+    lines.push('');lines.push(stockCsvCell('UNKNOWN = not calculable (missing count, cost or sales). Totals must be summed from known values only. All values ex VAT. Shortage/surplus are unexplained, not proven wastage.'));
+    var blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='stock-report-'+(el('reportPeriodStart').value||'')+'-to-'+(el('reportPeriodEnd').value||'')+'.csv';
+    document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);
   }
 
 
@@ -9519,6 +9768,8 @@
         if(item.containerSize)meta.push(escHtml(item.containerSize));
         if(item.caseSize)meta.push('Case/'+item.caseSize);
         if(item.supplier)meta.push(escHtml(item.supplier));
+        meta.push(stockCostNum(item.unitCostPence)===null?'<span style="color:#D97706">Cost unknown</span>':stockPence(item.unitCostPence)+'/'+escHtml(item.countUnit||'unit')+' ex VAT'+(item.costSource?' ('+escHtml(item.costSource)+(item.costDate?' '+escHtml(stockFmtDate(item.costDate)):'')+')':''));
+        if(stockItemPacks(item).length)meta.push('Packs: '+stockItemPacks(item).map(function(pk){return escHtml(pk.label);}).join(', '));
         html+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px">'+
           '<div style="flex:1;min-width:0">'+
             '<div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+
@@ -9550,7 +9801,7 @@
     _stockCategories.forEach(function(c){
       var opt=document.createElement('option');opt.value=c.id;opt.textContent=c.name;sel.appendChild(opt);
     });
-    el('addItemName').value='';el('addItemUnit').value='';el('addItemContainer').value='';el('addItemCase').value='';el('addItemSupplier').value='';
+    el('addItemName').value='';el('addItemUnit').value='';el('addItemContainer').value='';el('addItemCase').value='';el('addItemSupplier').value='';el('addItemCost').value='';stockCostHelp('add');stockSetPacks('add',[]);
     el('stockAddItemErr').style.display='none';
     el('stockAddItemForm').style.display='';
     el('stockEditItemForm').style.display='none';
@@ -9568,6 +9819,12 @@
     if(el('addItemContainer').value.trim())body.containerSize=el('addItemContainer').value.trim();
     if(el('addItemCase').value)body.caseSize=parseInt(el('addItemCase').value);
     if(el('addItemSupplier').value.trim())body.supplier=el('addItemSupplier').value.trim();
+    var addCost=stockParsePounds(el('addItemCost').value,4);
+    if(!addCost.ok){errEl.textContent='Cost must be pounds, e.g. 1.15 (max 4 decimal places).';errEl.style.display='';return;}
+    var addPk=stockReadPacks('add');if(addPk.err){errEl.textContent=addPk.err;errEl.style.display='';return;}
+    body.unitCostPence=addCost.pence===null?null:String(addCost.pence);
+    if(addCost.pence!==null){body.costSource='manual';body.costDate=new Date().toISOString().slice(0,10);}
+    body.purchasePacks=addPk.packs;
     try{
       var r=await api('/api/stock/items',{method:'POST',body:JSON.stringify(body)});
       var item=await r.json();
@@ -9588,6 +9845,9 @@
     el('editItemCase').value=item.caseSize||'';
     el('editItemServes').value=item.servesPerUnit||'';
     el('editItemSupplier').value=item.supplier||'';
+    el('editItemCost').value=stockPoundsInput(item.unitCostPence);el('editItemCost').dataset.orig=el('editItemCost').value;stockCostHelp('edit');
+    stockSetPacks('edit',stockItemPacks(item));
+    el('stockInvoicePricePanel').style.display='none';
     el('stockEditItemErr').style.display='none';
     // POS link status
     el('editItemPOSPicker').style.display='none';
@@ -9616,7 +9876,13 @@
     var id=parseInt(el('editItemId').value);
     var name=el('editItemName').value.trim();
     if(!name){errEl.textContent='Item name is required.';errEl.style.display='';return;}
+    var editCost=stockParsePounds(el('editItemCost').value,4);
+    if(!editCost.ok){errEl.textContent='Cost must be pounds, e.g. 1.15 (max 4 decimal places).';errEl.style.display='';return;}
+    var editPk=stockReadPacks('edit');if(editPk.err){errEl.textContent=editPk.err;errEl.style.display='';return;}
+    var costExtra={purchasePacks:editPk.packs};
+    if(el('editItemCost').value.trim()!==(el('editItemCost').dataset.orig||'')){costExtra.unitCostPence=editCost.pence===null?null:String(editCost.pence);costExtra.costSource=editCost.pence===null?null:'manual';costExtra.costDate=editCost.pence===null?null:new Date().toISOString().slice(0,10);}
     var body={name:name,containerSize:el('editItemContainer').value.trim()||null,caseSize:el('editItemCase').value?parseInt(el('editItemCase').value):null,servesPerUnit:el('editItemServes').value?parseFloat(el('editItemServes').value):null,supplier:el('editItemSupplier').value.trim()||null};
+    Object.assign(body,costExtra);
     try{
       var r=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify(body)});
       var updated=await r.json();
@@ -13890,6 +14156,14 @@
   window.deleteDelivery=deleteDelivery;
   window.saveDelivery=saveDelivery;
   window.runStockReport=runStockReport;
+  window.setStockReportFilter=setStockReportFilter;
+  window.exportStockReportCsv=exportStockReportCsv;
+  window.stockCostHelp=stockCostHelp;
+  window.stockAddPackRow=stockAddPackRow;
+  window.stockAddPackToCount=stockAddPackToCount;
+  window.stockDelSuggest=stockDelSuggest;
+  window.openInvoicePriceReview=openInvoicePriceReview;
+  window.applyInvoicePrice=applyInvoicePrice;
   window.showAddStockItemForm=showAddStockItemForm;
   window.cancelAddStockItem=cancelAddStockItem;
   window.saveNewStockItem=saveNewStockItem;

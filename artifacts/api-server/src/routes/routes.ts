@@ -38,6 +38,8 @@ import { liveStock } from "../stock-live";
 import { registerCustomerAccount } from "../customer-account";
 import { allocateStockMatches } from "../stock-match-allocation";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
+import { stockFinancials } from "../stock-finance";
+import { registerStockInvoicePrices } from "../stock-invoice-prices";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -15810,6 +15812,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       res.json(result);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+  registerStockInvoicePrices(app, staffAuth, managerAuth);
 
   app.get("/api/stock/live", staffAuth, managerAuth, async (_req, res) => {
     try { res.json(await liveStock()); }
@@ -15818,9 +15821,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   app.post("/api/stock/items", staffAuth, managerAuth, validateStockInput(stockItemInput), async (req: any, res) => {
     try {
-      const { categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode } = req.body;
+      const { categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode, unitCostPence, costSource, costDate, purchasePacks } = req.body;
       if (!categoryId || !name || !countUnit) return res.status(400).json({ error: "categoryId, name and countUnit are required" });
-      const [item] = await db.insert(stockItems).values({ categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode, sortOrder: 999 }).returning();
+      const [item] = await db.insert(stockItems).values({ categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode, unitCostPence, costSource, costDate, purchasePacks, sortOrder: 999 }).returning();
       res.json(item);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -15829,7 +15832,17 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     try {
       const id = parseInt(req.params.id, 10);
       const { servesPerUnit, active, name, containerSize, caseSize, supplier, supplierCode, categoryId, countUnit } = req.body;
+      const [previous] = await db.select().from(stockItems).where(dEq(stockItems.id, id));
+      if (!previous) return res.status(404).json({ error: "Item not found" });
+      if ((countUnit !== undefined && countUnit !== previous.countUnit) || (containerSize !== undefined && containerSize !== previous.containerSize)) {
+        const usedCounts = await db.select({ id: stockCountLines.id }).from(stockCountLines).where(dEq(stockCountLines.stockItemId, id)).limit(1);
+        const usedDeliveries = await db.select({ id: stockDeliveryLines.id }).from(stockDeliveryLines).where(dEq(stockDeliveryLines.stockItemId, id)).limit(1);
+        if (usedCounts.length || usedDeliveries.length) return res.status(409).json({ error: "This product has stock history. Add a purchase pack for another keg/case size instead of changing its historical count unit." });
+      }
       const updates: Record<string, unknown> = { updatedAt: new Date() };
+      for (const key of ["unitCostPence", "costSource", "costDate", "purchasePacks"]) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
       if (servesPerUnit !== undefined) updates.servesPerUnit = servesPerUnit;
       if (active !== undefined) updates.active = active;
       if (name !== undefined) updates.name = name;
@@ -15882,7 +15895,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         const n = parseFloat(String(v));
         return Number.isFinite(n) && n >= 0 ? n : null;
       };
-      const lineRows = (lines as Array<{ stockItemId: number; quantityUnits?: string; quantityCases?: string }>).map((l) => {
+      const lineRows = (lines as Array<{ stockItemId: number; quantityUnits?: string; quantityCases?: string; invoiceLineCostPence?: number | null }>).map((l) => {
         const caseSize = caseSizeById.get(l.stockItemId) ?? null;
         const casesIn = num(l.quantityCases);
         const unitsIn = num(l.quantityUnits);
@@ -15900,6 +15913,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           stockItemId: l.stockItemId,
           quantityUnits: String(units),
           quantityCases: cases != null ? String(cases) : null,
+          invoiceLineCostPence: l.invoiceLineCostPence ?? null,
         };
       }).filter((r) => parseFloat(r.quantityUnits) > 0);
       if (!lineRows.length) { res.status(400).json({ error: "No valid delivery quantities" }); return; }
@@ -15924,6 +15938,17 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   });
 
   // Stock Counts
+  async function countSnapshotRows(tx: any, countId: number, lines: Array<{ stockItemId: number; quantityUnits: string }>, submitted: boolean) {
+    const products = lines.length ? await tx.select().from(stockItems).where(dInArray(stockItems.id, lines.map(l => l.stockItemId))) : [];
+    if (products.length !== lines.length) throw new Error("One or more counted products no longer exist");
+    return lines.map(l => {
+      const item = products.find((i: any) => i.id === l.stockItemId)!;
+      return { countId, stockItemId: l.stockItemId, quantityUnits: String(l.quantityUnits),
+        unitCostPence: submitted ? item.unitCostPence : null,
+        countUnitSnapshot: submitted ? item.countUnit : null,
+        baseUnitsPerCountUnit: submitted ? (item.countUnit === "keg" ? item.servesPerUnit : "1") : null };
+    });
+  }
   app.get("/api/stock/counts", staffAuth, managerAuth, async (_req, res) => {
     try {
       const counts = await db.select().from(stockCounts).orderBy(dDesc(stockCounts.periodEnd)).limit(24);
@@ -15959,11 +15984,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         submittedAt: status === "submitted" ? new Date() : null,
       }).returning();
       if (lines?.length) {
-        const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string }>).map((l) => ({
-          countId: count.id,
-          stockItemId: l.stockItemId,
-          quantityUnits: String(l.quantityUnits),
-        }));
+        const lineRows = await countSnapshotRows(tx, count.id, lines, status === "submitted");
         await tx.insert(stockCountLines).values(lineRows);
       }
       return count;
@@ -15989,13 +16010,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (notes !== undefined) updates.notes = notes;
       if (status) { updates.status = status; if (status === "submitted") updates.submittedAt = new Date(); }
       if (Object.keys(updates).length) await tx.update(stockCounts).set(updates).where(dEq(stockCounts.id, id));
-      if (lines !== undefined) {
+      if (lines !== undefined || status === "submitted") {
         await tx.delete(stockCountLines).where(dEq(stockCountLines.countId, id));
-        const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string }>).map((l) => ({
-          countId: id,
-          stockItemId: l.stockItemId,
-          quantityUnits: String(l.quantityUnits),
-        }));
+        const lineRows = await countSnapshotRows(tx, id, savedLines, status === "submitted");
         if (lineRows.length) await tx.insert(stockCountLines).values(lineRows);
       }
       });
@@ -16164,7 +16181,6 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         .select({ item: stockItems, cat: stockCategories })
         .from(stockItems)
         .innerJoin(stockCategories, dEq(stockItems.categoryId, stockCategories.id))
-        .where(dEq(stockItems.active, true))
         .orderBy(dAsc(stockCategories.sortOrder), dAsc(stockItems.sortOrder));
 
       // Last submitted count BEFORE periodStart (opening stock)
@@ -16212,16 +16228,20 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       let squareSalesAvailable = squareConfigured;
       let squareSalesError: string | null = squareConfigured ? null : "Square POS is not configured.";
       let salesMap = new Map<string, number>();
+      let revenueMap = new Map<string, number | null>();
       if (squareConfigured) {
         try {
-          salesMap = await square.getSalesByVariation(actualStart.toISOString(), actualEnd.toISOString());
+          const financialSales = await square.getStockSalesByVariation(actualStart.toISOString(), actualEnd.toISOString());
+          salesMap = financialSales.quantities;
+          revenueMap = financialSales.netRevenuePence;
         } catch (error: any) {
           squareSalesAvailable = false;
           squareSalesError = error?.message ?? "Square POS sales could not be loaded.";
         }
       }
 
-      const round1 = (n: number) => Math.round(n * 10) / 10;
+      // Preserve fractional bottle/measure quantities; round money only at display totals.
+      const round1 = (n: number) => Math.round(n * 10000) / 10000;
 
       const report = itemRows.map(({ item, cat }) => {
         // Base unit: kegs reconcile in pints (× serves/keg); everything else in its own count unit.
@@ -16229,8 +16249,13 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         const toBase = pintsPerKeg > 0 ? (units: number) => units * pintsPerKeg : (units: number) => units;
         const baseUnit = pintsPerKeg > 0 ? "pint" : item.countUnit;
 
-        const openingUnits = parseFloat(openingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
-        const closingUnits = parseFloat(closingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
+        const openingLine = openingLines.find(l => l.stockItemId === item.id);
+        const closingLine = closingLines.find(l => l.stockItemId === item.id);
+        const openingUnits = parseFloat(openingLine?.quantityUnits ?? "0");
+        const closingUnits = parseFloat(closingLine?.quantityUnits ?? "0");
+        const conversion = item.countUnit === "keg" ? pintsPerKeg : 1;
+        const conversionValid = conversion > 0 && [openingLine, closingLine].every(line =>
+          !line?.countUnitSnapshot || (line.countUnitSnapshot === item.countUnit && Number(line.baseUnitsPerCountUnit) === conversion));
         const deliveredUnits = deliveryRows
           .filter((r) => r.line.stockItemId === item.id)
           .reduce((sum, r) => sum + parseFloat(r.line.quantityUnits), 0);
@@ -16247,10 +16272,24 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           ? itemLinks.map((l) => ({ variationId: l.squareVariationId, factor: parseFloat(l.soldUnitFactor) || 1 }))
           : (item.squareCatalogVariationId ? [{ variationId: item.squareCatalogVariationId, factor: 1 }] : []);
         const squareLinked = effectiveLinks.length > 0;
-        const sold = squareLinked && squareSalesAvailable
+        const measureMappingUnverified = itemLinks.some(l => Number(l.soldUnitFactor) >= 1 && (
+          item.countUnit === "bib" || (item.countUnit === "bottle" && /spirits|wine|prosecco/i.test(cat.name) &&
+          /(?:\b(?:single|double|shot|glass)\b|\b(?:25|35|50|125|175|250)\s?ml\b)/i.test(l.squareVariationName ?? ""))));
+        const sold = squareLinked && squareSalesAvailable && conversionValid && !measureMappingUnverified
           ? round1(effectiveLinks.reduce((sum, lk) => sum + (salesMap.get(lk.variationId) ?? 0) * lk.factor, 0))
           : null;
         const variance = sold !== null && consumed !== null ? round1(consumed - sold) : null;
+        const netSales = squareLinked && squareSalesAvailable && effectiveLinks.every(l => revenueMap.get(l.variationId) !== null)
+          ? effectiveLinks.reduce((sum, l) => sum + (revenueMap.get(l.variationId) ?? 0), 0) : null;
+        const financial = stockFinancials({
+          openingUnits: openingLine ? openingUnits : null, closingUnits: closingLine ? closingUnits : null,
+          openingCostPence: openingLine?.unitCostPence == null ? null : Number(openingLine.unitCostPence),
+          conversion: conversionValid && !measureMappingUnverified ? conversion : null,
+          deliveries: deliveryRows.filter(r => r.line.stockItemId === item.id).map(r => ({
+            quantityUnits: Number(r.line.quantityUnits), invoiceLineCostPence: r.line.invoiceLineCostPence })),
+          sold, netSalesPence: netSales,
+        });
+        if (measureMappingUnverified) financial.financialWarnings.push("Check the POS measure conversion: a shot or glass cannot consume a whole bottle.");
 
         return {
           itemId: item.id,
@@ -16271,8 +16310,10 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           consumed,
           sold,
           variance,
+          ...financial,
+          active: item.active,
         };
-      }).filter((r) => (r.opening ?? 0) > 0 || r.delivered > 0 || (r.closing ?? 0) > 0 || (r.sold ?? 0) > 0);
+      }).filter(r => r.active || (r.opening ?? 0) > 0 || r.delivered > 0 || (r.closing ?? 0) > 0 || (r.sold ?? 0) > 0);
 
       res.json(report);
     } catch (e: any) { res.status(500).json({ error: e.message }); }

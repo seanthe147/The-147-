@@ -1,18 +1,23 @@
 import { z } from "zod";
 
 const quantity = z.union([z.string().trim().min(1), z.number()])
-  .refine(v => Number.isFinite(Number(v)) && Number(v) >= 0, "Quantity must be a non-negative number")
+  .refine(v => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1000000000, "Quantity must be a valid non-negative number")
   .transform(v => String(Number(v)));
 const positive = quantity.refine(v => Number(v) > 0, "Must be greater than zero");
 const date = z.string().refine(v => v.trim() !== "" && Number.isFinite(Date.parse(v)), "Invalid date");
 const id = z.number().int().positive();
 const text = z.string().trim().max(500);
+const money = z.number().int().min(0).max(1000000000);
 export const stockItemInput = z.object({
   categoryId: id, name: text.min(1), countUnit: text.min(1),
   containerSize: text.nullable().optional(), supplier: text.nullable().optional(),
   supplierCode: text.nullable().optional(),
   caseSize: z.number().int().positive().nullable().optional(),
   servesPerUnit: positive.nullable().optional(), active: z.boolean().optional(),
+  unitCostPence: quantity.refine(v => Number(v) <= 1000000000, "Cost is too large").nullable().optional(),
+  costSource: text.nullable().optional(), costDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  purchasePacks: z.array(z.object({ label: text.min(1), quantityUnits: z.number().positive().finite(),
+    costPence: money.nullable(), supplierCode: text.optional() })).max(30).optional(),
 });
 const countLines = z.array(z.object({ stockItemId: id, quantityUnits: quantity }))
   .max(2000).refine(lines => new Set(lines.map(l => l.stockItemId)).size === lines.length, "Duplicate product lines");
@@ -27,6 +32,7 @@ export const stockDeliveryInput = z.object({
   invoiceRef: text.nullable().optional(), notes: text.nullable().optional(),
   lines: z.array(z.object({
     stockItemId: id, quantityUnits: quantity.optional(), quantityCases: quantity.optional(),
+    invoiceLineCostPence: money.nullable().optional(),
   }).refine(l => l.quantityUnits !== undefined || l.quantityCases !== undefined, "Quantity required"))
     .min(1).max(2000)
     .refine(lines => new Set(lines.map(l => l.stockItemId)).size === lines.length, "Duplicate product lines")
