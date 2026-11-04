@@ -18,6 +18,13 @@ Required adding `numeric` to the drizzle-orm/pg-core import in schema.ts — it 
 ## Delivery backdating
 Deliveries have `deliveredAt` (actual arrival, editable) and `createdAt` (system time). Report uses `deliveredAt` for the period maths — critical for mid-shift top-up accuracy.
 
+## Supplier and reporting scope
+The two main suppliers are LWC and Molson Coors. Financial reporting is stock gross profit, not a full business P&L with wages, rent and overheads.
+
+**Why:** the owner explicitly identified both suppliers and selected stock gross-profit reporting. They also reported missing 50L alternatives where products currently show only 100L kegs.
+
+**How to apply:** verify product codes, pack sizes and actual invoice costs against supplier invoices before changing the catalogue. Do not globally replace 100L kegs or overwrite historical count units; the same drink may arrive in different keg sizes.
+
 ## Reconciliation boundaries and missing counts
 Estimated live levels must not overwrite physical counts or write quantities back to Square.
 
