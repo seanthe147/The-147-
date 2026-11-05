@@ -54,7 +54,7 @@ try {
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
     "src/membership-failure-notifications.test.ts", "src/staff-membership-change-policy.test.ts",
     "src/customer-screen-wiring.test.ts"]);
-  for (const entry of ["square-snooker-catalog", "membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims", "customer-account"]) {
+  for (const entry of ["stock-repair", "square-snooker-catalog", "membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims", "customer-account"]) {
   const output = path.join(temp, `${entry}.test.mjs`);
   await build({
     absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,

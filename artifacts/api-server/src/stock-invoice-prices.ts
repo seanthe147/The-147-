@@ -23,6 +23,7 @@ export function registerStockInvoicePrices(app: Express, staffAuth: RequestHandl
         await tx.execute(sql`SELECT pg_advisory_xact_lock(14700033)`);
         const [item] = await tx.select().from(stockItems).where(eq(stockItems.id, id)).for("update");
         if (!item) return null;
+        if (!item.active || item.mergedIntoId) throw new Error("This record is archived or consolidated. Apply the invoice to its active stock record instead.");
         const quantity = packQuantity(row, item);
         // No fuzzy import into an unrelated product, even if a client submits an arbitrary ID.
         if (!invoiceMatches(row, item) || !quantity) throw new Error("Product name or pack size does not match. Correct the catalogue product before applying this invoice.");

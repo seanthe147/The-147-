@@ -3909,7 +3909,9 @@
     }
     if(!r.ok && /\/(?:staff\/)?stock\//.test(url)){
       var stockError=await r.clone().json().catch(function(){return {};});
-      throw new Error(stockError.error||'Stock request failed ('+r.status+')');
+      var stockFailure=new Error(stockError.error||'Stock request failed ('+r.status+')');
+      stockFailure.status=r.status;
+      throw stockFailure;
     }
     return r;
   }
@@ -14201,10 +14203,10 @@
     if(_srStale)h+='<div class="modal-err show" role="alert" data-testid="status-repair-stale">The catalogue changed since this preview was built. Refresh the preview before applying.</div>';
     h+='<div class="sr-grid">';
     h+='<div class="sr-box"><h4>Exact duplicates to merge <span class="pill pill-blue">'+act.length+'</span></h4><div class="sr-scroll">'+(act.length?act.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-dup-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' · archive '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small></div>';}).join(''):srEmpty('No mergeable duplicates.'))+'</div></div>';
-    h+='<div class="sr-box"><h4>Blocked — left untouched <span class="pill pill-red">'+blk.length+'</span></h4><div class="sr-scroll">'+(blk.length?blk.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-blocked-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' vs '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small><small style="color:var(--red)">'+escHtml(x.blockedReason)+'</small></div>';}).join(''):srEmpty('No blocked conflicts.'))+'</div></div>';
+    h+='<div class="sr-box"><h4>Blocked duplicate merges <span class="pill pill-red">'+blk.length+'</span></h4><div class="sr-scroll">'+(blk.length?blk.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-blocked-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' vs '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small><small style="color:var(--red)">'+escHtml(x.blockedReason)+'</small></div>';}).join(''):srEmpty('No blocked conflicts.'))+'</div></div>';
     h+='<div class="sr-box"><h4>Unsafe Square links to quarantine <span class="pill pill-amber">'+un.length+'</span></h4><div class="sr-scroll">'+(un.length?un.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-unsafe-'+i+'"><strong>'+escHtml(x.name)+'</strong> → '+escHtml(x.variationName||x.variationId)+'<small>'+escHtml(x.reason)+'</small></div>';}).join(''):srEmpty('No unsafe links.'))+'</div></div>';
     h+='</div>';
-    h+='<div class="sr-box" style="margin-top:14px"><h4>Apply repair</h4><div class="sr-note">Applying will: <b>merge exact duplicates</b> into the kept item, preserving and reassigning their historical count, delivery and price lines; leave <b>blocked conflicts</b> (e.g. same-count clashes) completely untouched; and <b>quarantine invalid or ambiguous Square links</b> rather than guessing a replacement. You can relink manually below.</div>'+
+    h+='<div class="sr-box" style="margin-top:14px"><h4>Apply repair</h4><div class="sr-note">Applying will: <b>merge exact duplicates</b> into the kept item, preserving their historical quantities, costs and notes; skip <b>blocked duplicate merges</b> (e.g. same-count clashes); and <b>quarantine invalid or ambiguous Square links</b>, including those on blocked records, rather than guessing a replacement. You can relink manually below.</div>'+
       '<label class="sr-check"><input type="checkbox" id="srApplyConfirm" data-testid="checkbox-repair-confirm" onchange="srSyncApply()" '+(n?'':'disabled')+'> I have reviewed this preview and confirm the repair.</label>'+
       '<div class="sr-actions"><button class="btn btn-warning btn-sm" id="srApplyBtn" data-testid="button-repair-apply" disabled onclick="applyStockRepair()">Apply repair ('+n+' change'+(n===1?'':'s')+')</button>'+(n?'':'<span style="font-size:12px;color:var(--text-2)">No actionable issues.</span>')+'</div></div>';
     h+='<div class="sr-grid" style="margin-top:14px">';

@@ -4,6 +4,13 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const html = readFileSync(new URL("./templates/staff-dashboard.html", import.meta.url), "utf8");
+test("stock API errors preserve HTTP conflict status for the repair refresh guard", async()=>{
+  const start=html.indexOf("  async function api(url,opts)");
+  const end=html.indexOf("\n  }",start)+4;
+  const context=vm.createContext({getToken:()=>null,fetch:async()=>new Response(JSON.stringify({error:"Refresh preview"}),{status:409})});
+  vm.runInContext(html.slice(start,end)+"\nthis.callApi=api",context);
+  await assert.rejects(context.callApi("/api/stock/repair/apply"),(e:any)=>e.status===409 && e.message==="Refresh preview");
+});
 test("dashboard scripts parse and draft handler is publicly bound", () => {
   for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) new vm.Script(match[1]);
   assert.match(html, /window\.editStockCount\s*=\s*editStockCount/);

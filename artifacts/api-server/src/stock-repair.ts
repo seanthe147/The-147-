@@ -1,12 +1,14 @@
 import type { Express, RequestHandler } from "express";
-import { db, stockItems, stockItemPosLinks, stockCountLines, stockDeliveryLines, stockRepairAudit, stockCategories } from "@workspace/db";
+import { db, stockItems, stockItemPosLinks, stockCountLines, stockDeliveryLines, stockRepairAudit, stockCategories, stockCounts, stockDeliveries } from "@workspace/db";
 import { eq, sql, asc, desc, inArray } from "drizzle-orm";
 import { listCatalogVariations, clearCatalogVariationsCache } from "./square";
-import { repairPlan } from "./stock-repair-plan";
+import { repairPlan, alcoholIdentityMismatch } from "./stock-repair-plan";
 import { stockInvoicePrices, invoiceMatches } from "./stock-invoice-data";
 
 async function snapshot(tx: any) {
   return {items:await tx.select().from(stockItems).orderBy(asc(stockItems.id)),
+    countHeaders:await tx.select().from(stockCounts).orderBy(asc(stockCounts.id)),
+    deliveryHeaders:await tx.select().from(stockDeliveries).orderBy(asc(stockDeliveries.id)),
     links:await tx.select().from(stockItemPosLinks).orderBy(asc(stockItemPosLinks.id)),
     counts:await tx.select().from(stockCountLines).orderBy(asc(stockCountLines.id)),
     deliveries:await tx.select().from(stockDeliveryLines).orderBy(asc(stockDeliveryLines.id))};
@@ -46,15 +48,14 @@ export function registerStockRepair(app:Express,auth:RequestHandler,manager:Requ
       const merges=plan.duplicates.filter(g=>!g.blockedReason);
       if(!merges.length&&!plan.unsafeLinks.length)failure("No safe repairs to apply");
       // Quarantine all owners of ambiguous sales. Preserve the complete before-image.
-      for(const bad of plan.unsafeLinks){
-        const ls=before.links.filter((l:any)=>l.stockItemId===bad.stockItemId&&l.squareVariationId===bad.variationId);
-        if(ls.length)await tx.delete(stockItemPosLinks).where(inArray(stockItemPosLinks.id,ls.map((l:any)=>l.id)));
-        const item=before.items.find((i:any)=>i.id===bad.stockItemId);
-        if(item?.squareCatalogVariationId===bad.variationId)await tx.update(stockItems).set({squareCatalogVariationId:null,squareCatalogVariationName:null,updatedAt:new Date()}).where(eq(stockItems.id,bad.stockItemId));
-      }
+      const unsafeRows=before.links.filter((l:any)=>plan.unsafeLinks.some((b:any)=>b.stockItemId===l.stockItemId&&b.variationId===l.squareVariationId));
+      const unsafeLegacy=before.items.filter((i:any)=>plan.unsafeLinks.some((b:any)=>b.stockItemId===i.id&&b.variationId===i.squareCatalogVariationId));
+      if(unsafeRows.length)await tx.delete(stockItemPosLinks).where(inArray(stockItemPosLinks.id,unsafeRows.map((l:any)=>l.id)));
+      if(unsafeLegacy.length)await tx.update(stockItems).set({squareCatalogVariationId:null,squareCatalogVariationName:null,updatedAt:new Date()}).where(inArray(stockItems.id,unsafeLegacy.map((i:any)=>i.id)));
+      const current=await snapshot(tx);
+      const replacementLinks:any[]=[];
       for(const group of merges){
         const ids=[group.keepId,...group.archiveIds];
-        const current=await snapshot(tx);
         const combined=new Map<string,any>();
         for(const id of ids){
           const own=current.links.filter((l:any)=>l.stockItemId===id);
@@ -66,13 +67,18 @@ export function registerStockRepair(app:Express,auth:RequestHandler,manager:Requ
             combined.set(l.squareVariationId,l);
           }
         }
-        await tx.delete(stockItemPosLinks).where(inArray(stockItemPosLinks.stockItemId,ids));
-        if(combined.size)await tx.insert(stockItemPosLinks).values([...combined.values()].map(l=>({stockItemId:group.keepId,squareVariationId:l.squareVariationId,squareVariationName:l.squareVariationName,soldUnitFactor:String(l.soldUnitFactor),verifiedAt:l.verifiedAt??null})));
-        await tx.update(stockCountLines).set({stockItemId:group.keepId}).where(inArray(stockCountLines.stockItemId,group.archiveIds));
-        await tx.update(stockDeliveryLines).set({stockItemId:group.keepId}).where(inArray(stockDeliveryLines.stockItemId,group.archiveIds));
-        await tx.update(stockItems).set({active:false,squareCatalogVariationId:null,squareCatalogVariationName:null,updatedAt:new Date()}).where(inArray(stockItems.id,group.archiveIds));
-        // Link table is authoritative. Remove fallback so quarantine cannot resurrect it.
-        await tx.update(stockItems).set({squareCatalogVariationId:null,squareCatalogVariationName:null,updatedAt:new Date()}).where(eq(stockItems.id,group.keepId));
+        replacementLinks.push(...[...combined.values()].map(l=>({stockItemId:group.keepId,squareVariationId:l.squareVariationId,squareVariationName:l.squareVariationName,soldUnitFactor:String(l.soldUnitFactor),verifiedAt:l.verifiedAt??null})));
+      }
+      if(merges.length){
+        const archived=merges.flatMap(g=>g.archiveIds), allIds=merges.flatMap(g=>[g.keepId,...g.archiveIds]);
+        const cases=sql.join(merges.flatMap(g=>g.archiveIds.map(id=>sql`WHEN ${id} THEN ${g.keepId}`)),sql` `);
+        await tx.delete(stockItemPosLinks).where(inArray(stockItemPosLinks.stockItemId,allIds));
+        if(replacementLinks.length)await tx.insert(stockItemPosLinks).values(replacementLinks);
+        await tx.update(stockCountLines).set({stockItemId:sql`CASE stock_item_id ${cases} ELSE stock_item_id END`}).where(inArray(stockCountLines.stockItemId,archived));
+        await tx.update(stockDeliveryLines).set({stockItemId:sql`CASE stock_item_id ${cases} ELSE stock_item_id END`}).where(inArray(stockDeliveryLines.stockItemId,archived));
+        const itemCases=sql.join(merges.flatMap(g=>g.archiveIds.map(id=>sql`WHEN ${id} THEN ${g.keepId}`)),sql` `);
+        await tx.update(stockItems).set({active:false,mergedIntoId:sql`CASE id ${itemCases} ELSE merged_into_id END`,updatedAt:new Date()}).where(inArray(stockItems.id,archived));
+        await tx.update(stockItems).set({squareCatalogVariationId:null,squareCatalogVariationName:null,updatedAt:new Date()}).where(inArray(stockItems.id,allIds));
       }
       await tx.insert(stockRepairAudit).values({action:"Consolidate duplicates and quarantine unsafe links",actor:req.staffUsername??"manager",snapshot:{before,plan,after:await snapshot(tx)}});
       return {message:`Consolidated ${merges.length} duplicate groups; quarantined ${plan.unsafeLinks.length} unsafe assignments. Historical quantities and costs preserved. Blocked merges skipped.`};
@@ -86,6 +92,7 @@ export function registerStockRepair(app:Express,auth:RequestHandler,manager:Requ
     await db.transaction(async tx=>{
       await lock(tx);const before=await snapshot(tx);const item=before.items.find((i:any)=>i.id===stockItemId&&i.active);
       if(!item)failure("Active stock item not found",404);
+      if(alcoholIdentityMismatch(item.name,v.itemName))failure("Alcohol-free and regular products must have separate matching Square links.");
       const owners=[...before.links.filter((l:any)=>l.squareVariationId===variationId).map((l:any)=>l.stockItemId),...before.items.filter((i:any)=>i.squareCatalogVariationId===variationId).map((i:any)=>i.id)];
       if(owners.some(id=>id!==stockItemId))failure("Variation still belongs to another record. Resolve its existing assignment first.",409);
       if(item.countUnit!=="keg"&&/^(half|half pint|pints?|½)$/i.test(v.variationName))failure("A draught variation needs keg stock, not a bottle");

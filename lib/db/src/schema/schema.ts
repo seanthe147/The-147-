@@ -1273,6 +1273,7 @@ export const stockItems = pgTable("stock_items", {
   squareCatalogVariationId: text("square_catalog_variation_id"),    // Square ITEM_VARIATION id for sales reconciliation
   squareCatalogVariationName: text("square_catalog_variation_name"), // display name of the linked variation
   active: boolean("active").notNull().default(true),
+  mergedIntoId: integer("merged_into_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

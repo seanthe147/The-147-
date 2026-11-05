@@ -54,6 +54,12 @@ Existing production link collisions require explicit reconciliation; new duplica
 
 **How to apply:** audit both current link rows and legacy fallback assignments before cleanup. Preserve and reconcile historical quantities, clear obsolete ownership in both representations, and confirm measure sizes before enforcing uniqueness. Never simply delete the duplicate records.
 
+Never automatically add together duplicate stock entries from the same count.
+
+**Why:** they may be repeated entries for the same physical stock rather than separate stock holdings; summing could invent inventory. Preserve both until a manager confirms the correct quantity.
+
+**How to apply:** block that consolidation, retain submitted values and notes, and require explicit reconciliation. Safe consolidation should archive the source identity with a permanent destination, not allow ordinary catalogue edits to revive it.
+
 **How to apply:** preserve historical count units, add purchase packs, and never import uploaded invoice quantities as deliveries without an explicit delivery-entry action.
 
 ## Reconciliation boundaries and missing counts

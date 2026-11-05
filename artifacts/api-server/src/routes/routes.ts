@@ -41,6 +41,7 @@ import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput
 import { stockFinancials } from "../stock-finance";
 import { registerStockInvoicePrices } from "../stock-invoice-prices";
 import { registerStockRepair } from "../stock-repair";
+import { alcoholIdentityMismatch } from "../stock-repair-plan";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -15836,6 +15837,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       const { servesPerUnit, active, name, containerSize, caseSize, supplier, supplierCode, categoryId, countUnit } = req.body;
       const [previous] = await db.select().from(stockItems).where(dEq(stockItems.id, id));
       if (!previous) return res.status(404).json({ error: "Item not found" });
+      if (previous.mergedIntoId) return res.status(409).json({error:`This record was consolidated into stock item ${previous.mergedIntoId}. Edit that record instead.`});
       if ((countUnit !== undefined && countUnit !== previous.countUnit) || (containerSize !== undefined && containerSize !== previous.containerSize)) {
         const usedCounts = await db.select({ id: stockCountLines.id }).from(stockCountLines).where(dEq(stockCountLines.stockItemId, id)).limit(1);
         const usedDeliveries = await db.select({ id: stockDeliveryLines.id }).from(stockDeliveryLines).where(dEq(stockDeliveryLines.stockItemId, id)).limit(1);
@@ -15920,6 +15922,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       }).filter((r) => parseFloat(r.quantityUnits) > 0);
       if (!lineRows.length) { res.status(400).json({ error: "No valid delivery quantities" }); return; }
       const delivery = await db.transaction(async tx => {
+        await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
+        const currentItems = await tx.select().from(stockItems).where(dInArray(stockItems.id, lineRows.map(l=>l.stockItemId)));
+        if(currentItems.some(i=>!i.active)) throw new Error("A product was archived or consolidated. Reload the catalogue before saving.");
         const [created] = await tx.insert(stockDeliveries).values({
           deliveredAt: new Date(deliveredAt), supplier, invoiceRef, notes, enteredBy: username,
         }).returning();
@@ -15943,6 +15948,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   async function countSnapshotRows(tx: any, countId: number, lines: Array<{ stockItemId: number; quantityUnits: string }>, submitted: boolean) {
     const products = lines.length ? await tx.select().from(stockItems).where(dInArray(stockItems.id, lines.map(l => l.stockItemId))) : [];
     if (products.length !== lines.length) throw new Error("One or more counted products no longer exist");
+    if (products.some((i:any)=>i.mergedIntoId)) throw new Error("A counted product was consolidated. Reload this draft before saving.");
     return lines.map(l => {
       const item = products.find((i: any) => i.id === l.stockItemId)!;
       return { countId, stockItemId: l.stockItemId, quantityUnits: String(l.quantityUnits),
@@ -15977,6 +15983,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (status === "submitted" && !lines?.length) return res.status(400).json({ error: "Enter at least one count before submitting" });
       const username = (req as any).staffUser?.username ?? "unknown";
       const count = await db.transaction(async tx => {
+      await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
       const [count] = await tx.insert(stockCounts).values({
         periodStart: new Date(periodStart),
         periodEnd: new Date(periodEnd),
@@ -16001,6 +16008,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       const { periodStart, periodEnd, notes, status, lines } = req.body;
       await db.transaction(async tx => {
       const [existing] = await tx.select().from(stockCounts).where(dEq(stockCounts.id, id)).for("update");
+      await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
       if (!existing) return res.status(404).json({ error: "Count not found" });
       if (existing.status === "submitted") return res.status(400).json({ error: "Submitted counts cannot be edited" });
       if (new Date(periodStart ?? existing.periodStart) > new Date(periodEnd ?? existing.periodEnd)) return res.status(400).json({ error: "Start date must not be after end date" });
@@ -16130,6 +16138,23 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
       const [item] = await tx.select().from(stockItems).where(dEq(stockItems.id, id));
       if (!item) { res.status(404).json({ error: "Item not found" }); return; }
+      if (!item.active) { res.status(409).json({ error: "This product is archived. Reload the catalogue before linking." }); return; }
+      if (clean.length) {
+        const catalogue = await square.listCatalogVariations();
+        for(const link of clean) {
+          const variation = catalogue.find(v=>v.variationId===link.squareVariationId);
+          if(!variation) { res.status(400).json({error:"A selected Square variation no longer exists. Refresh the catalogue."}); return; }
+          if(alcoholIdentityMismatch(item.name,variation.itemName)) { res.status(400).json({error:"Alcohol-free and regular products need separate matching Square links."}); return; }
+          const draught = /^(half|half pint|pints?|½)$/i.test(variation.variationName);
+          if ((item.countUnit!=="keg" && draught) ||
+            (/^(single|double|shot|glass)$/i.test(variation.variationName) && link.soldUnitFactor>=1)) {
+            res.status(400).json({error:"This serving does not match the stock unit. Use Repair stock links to confirm its conversion."}); return;
+          }
+          if(item.countUnit==="keg" && draught && link.soldUnitFactor !== (/half|½/i.test(variation.variationName)?0.5:1)) {
+            res.status(400).json({error:"Keg links must use 1 for a pint and 0.5 for a half pint."}); return;
+          }
+        }
+      }
       if (clean.length) {
         const conflicting = await tx
           .select({ stockItemId: stockItemPosLinks.stockItemId, squareVariationId: stockItemPosLinks.squareVariationId })
