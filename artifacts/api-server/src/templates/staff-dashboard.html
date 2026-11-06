@@ -9275,12 +9275,17 @@
   function renderInvoicePriceRows(){
     var list=el('stockInvoicePriceList');
     if(!_invoicePriceRows.length){list.innerHTML='<p style="color:var(--text-2);font-size:13px">No invoice prices awaiting review.</p>';return;}
-    var allOpts=_stockItems.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).map(function(i){return '<option value="'+i.id+'">'+escHtml(i.name)+(i.containerSize?' · '+escHtml(i.containerSize):'')+' ('+escHtml(i.countUnit||'')+')</option>';}).join('');
+    var allOpts=_stockItems.filter(function(i){return i.active!==false&&!i.mergedIntoId;}).sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).map(function(i){return '<option value="'+i.id+'">'+escHtml(i.name)+(i.containerSize?' · '+escHtml(i.containerSize):'')+' ('+escHtml(i.countUnit||'')+')</option>';}).join('');
     list.innerHTML=_invoicePriceRows.map(function(r,ix){
       var m=r.matches||[];
+      var applied=m.filter(function(match){
+        var item=_stockItems.find(function(i){return i.id===match.id;});
+        return item&&item.supplier===r.supplier&&item.costSource===r.supplier+' invoice '+r.invoiceDate&&stockItemPacks(item).some(function(p){return p.supplierCode===r.supplierCode&&Number(p.costPence)===Number(r.packCostPence);});
+      });
       var perUnit=r.packCostPence!=null&&Number(r.packUnits)>0?stockPence(Number(r.packCostPence)/Number(r.packUnits)):'Unknown';
       return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">'+
         '<div style="font-weight:700;font-size:14px">'+escHtml(r.name)+'</div>'+
+        '<div style="font-size:12px;margin:4px 0;color:var(--text-2)">'+(applied.length?'Invoice pack already saved to '+applied.map(function(i){return escHtml(i.name)+(i.containerSize?' ('+escHtml(i.containerSize)+')':'');}).join(', '):m.length?'Not yet applied · review the matching product and pack below':'Missing compatible product · create it from the verified invoice')+'</div>'+
         '<div style="font-size:12px;color:var(--text-2);margin:2px 0 8px">'+escHtml(r.supplier||'Supplier unknown')+(r.supplierCode?' #'+escHtml(r.supplierCode):'')+' · '+escHtml(r.packLabel||'pack')+
         (r.kind==='keg'?'': ' = '+escHtml(String(r.packUnits))+' count unit'+(Number(r.packUnits)===1?'':'s'))+
         ' · '+stockPence(r.packCostPence)+' per pack ex VAT '+(r.kind==='keg'?'(converted to the catalogue keg size on apply)':'('+perUnit+' per unit)')+
@@ -9292,7 +9297,7 @@
             (m.length?'<optgroup label="Suggested matches">'+m.map(function(x){return '<option value="'+x.id+'">'+escHtml(x.name)+(x.containerSize?' · '+escHtml(x.containerSize):'')+' ('+escHtml(x.countUnit||'')+')</option>';}).join('')+'</optgroup>':'')+
             '<optgroup label="All catalogue products">'+allOpts+'</optgroup></select>'+
           '<button type="button" class="btn btn-primary btn-sm" id="invApply'+ix+'" onclick="applyInvoicePrice('+ix+')">Apply</button>'+
-        '</div>'+(m.length?'':'<div style="font-size:12px;color:#D97706;margin-top:6px">No suggested match. Pick a product explicitly, or add it with "+ Add Item" first.</div>')+
+        '</div>'+(m.length?'':'<div style="font-size:12px;color:#D97706;margin-top:6px">Do not use a different flavour or pack to fill this gap. <button type="button" class="btn btn-secondary btn-sm" onclick="openStockRepair()">Open verified invoice products</button></div>')+
       '</div>';
     }).join('');
   }

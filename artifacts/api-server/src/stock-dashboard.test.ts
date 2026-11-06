@@ -4,6 +4,23 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const html = readFileSync(new URL("./templates/staff-dashboard.html", import.meta.url), "utf8");
+test("invoice review distinguishes applied packs and missing products and excludes archived choices",()=>{
+  const list={innerHTML:""};
+  const row={name:"Guinness",supplier:"LWC",supplierCode:"abc",packCostPence:100,packUnits:1,invoiceDate:"2026-09-02",matches:[{id:1,name:"Guinness",containerSize:"50L"}]};
+  const context=vm.createContext({
+    el:()=>list,escHtml:String,stockPence:String,stockFmtDate:String,
+    stockItemPacks:(i:any)=>i.purchasePacks||[],
+    _stockItems:[{id:1,name:"Guinness",supplier:"LWC",active:true,costSource:"LWC invoice 2026-09-02",purchasePacks:[{supplierCode:"abc",costPence:100}]},{id:2,name:"Archived duplicate",active:false}],
+    _invoicePriceRows:[row,{...row,name:"Missing lager",matches:[]}],
+  });
+  const start=html.indexOf("  function renderInvoicePriceRows()");
+  const end=html.indexOf("  async function applyInvoicePrice",start);
+  vm.runInContext(html.slice(start,end)+"\nrenderInvoicePriceRows()",context);
+  assert.match(list.innerHTML,/Invoice pack already saved/);
+  assert.match(list.innerHTML,/Missing compatible product/);
+  assert.match(list.innerHTML,/openStockRepair/);
+  assert.doesNotMatch(list.innerHTML,/Archived duplicate/);
+});
 test("stock API errors preserve HTTP conflict status for the repair refresh guard", async()=>{
   const start=html.indexOf("  async function api(url,opts)");
   const end=html.indexOf("\n  }",start)+4;
