@@ -2,6 +2,7 @@
 - [Square payment system bugs](square-payment-bugs.md) — confirmed root causes and fixes for "Payment Screen Issue" + loyalty reward issues
 - [Expo update safety](eas-ota-limit.md) — verify installed native compatibility, not runtime strings alone; follow current Expo publishing rules, not old CLI recipes
 - [Stock management system](stock-management.md) — delivery log, monthly counts, consumption report; seeding, backdating, router.d.ts gotcha
+- [Staff portal inactivity](staff-portal-inactivity.md) — requested 15-minute idle logout; polling must not keep staff web sessions alive.
 - [Fixture provider limits](fixture-provider-limits.md) — pace and deduplicate sports refreshes; preserve failed-source data with explicit stale warnings
 - [Prize code redemption](prize-code-redemption.md) — two code systems with subtle bugs; normalisation and alphabet must match between generation and lookup
 - [Square deals visibility](square-deals-visibility.md) — Square discounts have no active flag; pricing-rule date window is the on/off switch; 60s cache

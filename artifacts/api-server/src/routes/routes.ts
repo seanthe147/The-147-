@@ -40,6 +40,7 @@ import { allocateStockMatches } from "../stock-match-allocation";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 import { stockFinancials } from "../stock-finance";
 import { registerStockInvoicePrices } from "../stock-invoice-prices";
+import { availableKegPacks } from "../stock-keg-packs";
 import { registerStockRepair } from "../stock-repair";
 import { alcoholIdentityMismatch } from "../stock-repair-plan";
 
@@ -15807,6 +15808,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         : [];
       const result = items.map((item) => ({
         ...item,
+        purchasePacks: availableKegPacks(item),
         posLinks: links
           .filter((l) => l.stockItemId === item.id)
           .map((l) => ({ id: l.id, squareVariationId: l.squareVariationId, squareVariationName: l.squareVariationName, soldUnitFactor: parseFloat(l.soldUnitFactor) })),

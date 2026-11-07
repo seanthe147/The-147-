@@ -48,6 +48,12 @@ Alternate keg sizes belong to one stock identity with pack-to-count-unit convers
 
 **Why:** the same drink is purchased in 50L and 100L packs but sold through the same pint/half-pint variations; separate mapped stock items would duplicate deductions.
 
+The owner explicitly confirmed 50L availability for Coors, Carling lager and Madri.
+
+**Why:** these were the named missing keg choices, not a request to assume all draught products come in 50L.
+
+**How to apply:** provide 50L pack conversions without changing historical base count units, adding POS links, or inventing an unverified 50L price.
+
 Existing production link collisions require explicit reconciliation; new duplicate-write safeguards are not proof that historical links are unique.
 
 **Why:** the read-only live audit found conflicting assignments across duplicate records and across keg, bottled and alcohol-free products, with count/delivery history spread over different copies.
