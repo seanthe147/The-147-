@@ -1,12 +1,14 @@
 import { build } from "esbuild";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import path from "node:path";
 
 const cwd = path.dirname(fileURLToPath(import.meta.url));
+const runtimeDependencies = Object.keys(JSON.parse(await readFile(path.join(cwd, "package.json"), "utf8")).dependencies)
+  .filter(name => !name.startsWith("@workspace/"));
 const workspace = path.resolve(cwd, "../..");
 const temp = await mkdtemp(path.join(cwd, ".membership-billing-test-"));
 const postgres = await mkdtemp(path.join(tmpdir(), "membership-pg-"));
@@ -53,13 +55,13 @@ try {
   await run(process.execPath, ["--experimental-strip-types", "--test",
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
     "src/membership-failure-notifications.test.ts", "src/staff-membership-change-policy.test.ts",
-    "src/customer-screen-wiring.test.ts"]);
-  for (const entry of ["stock-repair", "square-snooker-catalog", "membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims", "customer-account"]) {
+    "src/customer-screen-wiring.test.ts", "src/staff-idle-client.test.ts"]);
+  for (const entry of ["staff-idle", "stock-repair", "square-snooker-catalog", "membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims", "customer-account"]) {
   const output = path.join(temp, `${entry}.test.mjs`);
   await build({
     absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,
     bundle: true, platform: "node", format: "esm",
-    external: ["express", "compression", "pg", "drizzle-orm", "drizzle-zod", "zod"],
+    external: runtimeDependencies,
   });
   try {
     await run(process.execPath, ["--test", "--test-force-exit", output]);

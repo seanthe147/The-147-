@@ -63,6 +63,7 @@ test("dashboard 18+ and colour controls send safe presentation payloads", async 
       });
 
       localStorage.setItem("staffToken147", "dashboard-regression-token");
+      localStorage.setItem("staffIdle147", JSON.stringify({token:"dashboard-regression-token",deadline:Date.now()+900000}));
       browserWindow.fetch = (async (input: unknown, init?: { method?: string; body?: unknown }) => {
         const url = String(input);
         if (url.endsWith("/api/staff/verify")) {
@@ -84,6 +85,10 @@ test("dashboard 18+ and colour controls send safe presentation payloads", async 
     });
 
     await page.route("http://dashboard.test/**", async (route) => {
+      if (route.request().url().endsWith("/assets/staff-idle.js")) {
+        await route.fulfill({status:200,contentType:"application/javascript",body:readFileSync(resolve("src/templates/assets/staff-idle.js"),"utf8")});
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "text/html",

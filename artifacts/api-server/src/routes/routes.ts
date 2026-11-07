@@ -1114,6 +1114,7 @@ function timingSafeCompare(a: string, b: string): boolean {
 const AUDIT_SKIP_PATHS = new Set<string>([
   "/api/staff/verify",
   "/api/staff/logout",
+  "/api/staff/activity",
 ]);
 
 // Field names whose values must NEVER be persisted in the audit log.
@@ -1204,7 +1205,7 @@ function attachStaffActionAudit(req: Request, res: Response): void {
   });
 }
 
-async function staffAuth(req: Request, res: Response, next: NextFunction) {
+export async function staffAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Authentication required" });
@@ -1217,6 +1218,16 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
   if (!session) {
     return res.status(401).json({ message: "Invalid or expired session" });
   }
+  // Existing website logins must authenticate again to receive an idle-limited
+  // token. Never convert a native session merely because a caller sent a header.
+  if (req.headers["x-staff-client"] === "web" && !session.idleExpiresAt) {
+    return res.status(401).json({ message: "Please sign in again to use the staff website." });
+  }
+  if (session.idleExpiresAt) {
+    res.setHeader("X-Staff-Idle-Expires-At", session.idleExpiresAt.toISOString());
+    res.setHeader("X-Staff-Server-Time", new Date().toISOString());
+  }
+  res.setHeader("Cache-Control", "no-store");
   if (session.staffUsername) {
     const user = await storage.getStaffUserByUsername(session.staffUsername);
     // Re-check the underlying account every request so locked/rejected/deleted
@@ -1239,7 +1250,7 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
     // callers cannot bypass it by skipping the client UI and calling APIs
     // directly with the bearer token.
     if (user.mustChangePassword === true) {
-      const allowedPaths = ["/api/staff/set-password", "/api/staff/logout", "/api/staff/verify"];
+      const allowedPaths = ["/api/staff/set-password", "/api/staff/logout", "/api/staff/verify", "/api/staff/activity"];
       if (!allowedPaths.includes(req.path)) {
         return res.status(403).json({
           mustChangePassword: true,
@@ -1938,10 +1949,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       clearFailedLogins(clientIp);
       const token = randomBytes(32).toString("hex");
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const session = await storage.createStaffSession(token, expiresAt, staffUser.id, staffUser.username);
+      const session = await storage.createStaffSession(token, expiresAt, staffUser.id, staffUser.username, req.body.client === "staff-web");
       return res.json({
         token: session.token,
         expiresAt: session.expiresAt,
+        idleExpiresAt: session.idleExpiresAt,
+        serverNow: new Date().toISOString(),
         username: staffUser.username,
         displayName: staffUser.displayName,
         role: staffUser.role,
@@ -1956,6 +1969,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.invalidateStaffSession(authHeader.slice(7));
     }
     res.status(204).send();
+  });
+
+  app.post("/api/staff/activity", staffAuth, async (req, res) => {
+    const elapsed = req.body.elapsedMs ?? 0;
+    if (typeof elapsed !== "number" || !Number.isFinite(elapsed) || elapsed < 0 || elapsed > 15_000) {
+      return res.status(400).json({ message: "Invalid activity interval" });
+    }
+    const session = await storage.recordStaffWebActivity(req.headers.authorization!.slice(7), elapsed);
+    if (!session?.idleExpiresAt) return res.status(401).json({ message: "Session expired. Please sign in again." });
+    res.setHeader("X-Staff-Idle-Expires-At", session.idleExpiresAt.toISOString());
+    res.setHeader("X-Staff-Server-Time", new Date().toISOString());
+    res.json({ idleExpiresAt: session.idleExpiresAt, serverNow: new Date().toISOString() });
   });
 
   app.get("/api/staff/verify", staffAuth, async (req, res) => {

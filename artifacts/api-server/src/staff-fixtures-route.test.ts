@@ -128,7 +128,7 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
   const originalLogStaffAction = storage.logStaffAction;
   (storage as any).validateStaffSession = async (token: string) =>
     token === SESSION_TOKEN
-      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000) }
+      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000), idleExpiresAt: new Date(Date.now() + 900_000) }
       : undefined;
   (storage as any).logStaffAction = async () => undefined;
 
@@ -219,7 +219,7 @@ async function startStaffDashboardServer(
   await loadFixturesWithTestClock();
   (storage as any).validateStaffSession = async (token: string) =>
     token === SESSION_TOKEN
-      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000) }
+      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000), idleExpiresAt: new Date(Date.now() + 900_000) }
       : undefined;
   (storage as any).logStaffAction = async () => undefined;
 
@@ -231,6 +231,7 @@ async function startStaffDashboardServer(
   });
   app.get("/favicon.ico", (_req, res) => res.sendStatus(204));
   app.get("/assets/logo-147.png", (_req, res) => res.sendStatus(204));
+  app.get("/assets/staff-idle.js", (_req, res) => res.type("js").send(readFileSync(resolve("src/templates/assets/staff-idle.js"), "utf8")));
   // The fixture request uses the real staffAuth middleware above. Keep the
   // verify response small and deterministic so the browser test can focus on
   // the dashboard rendering rather than database-backed dashboard panels.
@@ -291,7 +292,7 @@ async function openStaffDashboard(
     }
   });
   await page.addInitScript({
-    content: `window.localStorage.setItem("staffToken147", ${JSON.stringify(SESSION_TOKEN)});`,
+    content: `window.localStorage.setItem("staffToken147", ${JSON.stringify(SESSION_TOKEN)});window.localStorage.setItem("staffIdle147",JSON.stringify({token:${JSON.stringify(SESSION_TOKEN)},deadline:Date.now()+900000}));`,
   });
   await page.route("**/api/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;

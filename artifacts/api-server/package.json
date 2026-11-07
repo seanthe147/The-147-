@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:push": "node --experimental-strip-types --test src/push-core.test.ts",
+    "test:staff-idle": "node --experimental-strip-types --test src/staff-idle-client.test.ts",
     "test:stock": "node --experimental-strip-types --test src/stock-finance.test.ts src/stock-validation.test.ts src/stock-estimate.test.ts src/stock-match-allocation.test.ts src/stock-dashboard.test.ts src/stock-repair-plan.test.ts src/stock-keg-packs.test.ts",
     "test:menu": "node --experimental-strip-types --test src/square-menu.test.ts",
     "test:membership-billing": "node run-membership-billing-test.mjs",

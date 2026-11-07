@@ -807,7 +807,8 @@ export interface IStorage {
   getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]>;
   markReminderSent(id: number): Promise<void>;
   getExpiredPendingDeposits(olderThanMinutes: number): Promise<Booking[]>;
-  createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession>;
+  createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string, webPortal?: boolean): Promise<StaffSession>;
+  recordStaffWebActivity(token: string, elapsedMs: number): Promise<StaffSession | undefined>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
   getBookingsByEmail(email: string): Promise<Booking[]>;
@@ -1206,10 +1207,11 @@ export class DatabaseStorage implements IStorage {
     return rows.map(decryptBookingFields);
   }
 
-  async createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession> {
+  async createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string, webPortal = false): Promise<StaffSession> {
     const [session] = await db.insert(staffSessions).values({
       token,
       expiresAt,
+      idleExpiresAt: webPortal ? new Date(Math.min(expiresAt.getTime(), Date.now() + 15 * 60_000)) : null,
       staffUserId: staffUserId ?? null,
       staffUsername: staffUsername ?? null,
     }).returning();
@@ -1217,6 +1219,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async validateStaffSession(token: string): Promise<StaffSession | undefined> {
+    const now = new Date();
     const [session] = await db
       .select()
       .from(staffSessions)
@@ -1224,9 +1227,27 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(staffSessions.token, token),
           eq(staffSessions.active, true),
-          gt(staffSessions.expiresAt, new Date())
+          gt(staffSessions.expiresAt, now)
         )
       );
+    if (session?.idleExpiresAt && session.idleExpiresAt.getTime() <= Date.now()) {
+      // Only expired sessions need a write; normal polling remains read-only.
+      await db.update(staffSessions).set({ active: false }).where(and(
+        eq(staffSessions.token, token), lte(staffSessions.idleExpiresAt, new Date()),
+      ));
+      return undefined;
+    }
+    return session;
+  }
+
+  async recordStaffWebActivity(token: string, elapsedMs: number): Promise<StaffSession | undefined> {
+    const remainingMs = 15 * 60_000 - Math.min(15_000, Math.max(0, elapsedMs));
+    const [session] = await db.update(staffSessions).set({
+      // Overlapping requests/tabs cannot move the deadline backwards or extend the absolute session.
+      idleExpiresAt: sql`LEAST(${staffSessions.expiresAt}, GREATEST(${staffSessions.idleExpiresAt}, clock_timestamp() + ${remainingMs} * interval '1 millisecond'))`,
+    }).where(and(eq(staffSessions.token, token), eq(staffSessions.active, true),
+      sql`${staffSessions.expiresAt} > clock_timestamp()`,
+      sql`${staffSessions.idleExpiresAt} > clock_timestamp()`)).returning();
     return session;
   }
 

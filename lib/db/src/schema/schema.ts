@@ -211,6 +211,8 @@ export const staffSessions = pgTable("staff_sessions", {
   staffUsername: text("staff_username"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  // Null for native/legacy sessions; web sessions expire independently of polling.
+  idleExpiresAt: timestamp("idle_expires_at"),
   active: boolean("active").notNull().default(true),
 });
 
