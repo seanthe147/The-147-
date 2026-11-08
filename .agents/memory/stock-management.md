@@ -69,6 +69,12 @@ Never automatically add together duplicate stock entries from the same count.
 **How to apply:** preserve historical count units, add purchase packs, and never import uploaded invoice quantities as deliveries without an explicit delivery-entry action.
 
 ## Reconciliation boundaries and missing counts
+Live estimate caching must be keyed by persisted stock inputs, not just a timer or process-local invalidation.
+
+**Why:** a delivery, count correction or repair may be saved by another server process; an old in-flight calculation must not replace a newer cached snapshot.
+
+**How to apply:** read a consistent database snapshot before reusing sales estimates. Preserve captured keg yields; if an old keg count has no saved yield, or subsequent deliveries cannot be interpreted after a yield change, require a fresh physical count rather than guessing.
+
 Estimated live levels must not overwrite physical counts or write quantities back to Square.
 
 **Why:** the owner requested five-minute sales-based estimates; these cannot account for unrecorded wastage, so they are not authoritative counts.

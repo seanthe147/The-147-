@@ -4,6 +4,7 @@ import express from "express";
 import { db, stockItems, stockCategories, stockCounts, stockCountLines, stockDeliveries, stockDeliveryLines, stockItemPosLinks, stockRepairAudit } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { registerStockRepair } from "./stock-repair";
+import { liveStock } from "./stock-live";
 test("isolated repair preserves history, blocks stale previews and validates serving links", async()=>{
   if(process.env.MEMBERSHIP_BILLING_ISOLATED_TEST!=="yes")throw new Error("Isolated database required");
   const nativeFetch=globalThis.fetch;
@@ -118,5 +119,55 @@ test("isolated repair preserves history, blocks stale previews and validates ser
     await db.delete(stockRepairAudit);await db.delete(stockCountLines);await db.delete(stockDeliveryLines);
     await db.delete(stockCounts);await db.delete(stockDeliveries);await db.delete(stockItemPosLinks);await db.delete(stockItems);await db.delete(stockCategories);
     globalThis.fetch=nativeFetch;await new Promise<void>(r=>server.close(()=>r()));
+  }
+});
+
+test("live stock refreshes from committed deliveries and protects saved keg yields", async () => {
+  if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes") throw new Error("Isolated database required");
+  const originalFetch = globalThis.fetch;
+  let salesRequests = 0;
+  globalThis.fetch = async (url: any, options: any) => {
+    if (String(url).includes("squareupsandbox.com")) {
+      salesRequests++;
+      return new Response(JSON.stringify({ orders: [] }), { status: 200 });
+    }
+    return originalFetch(url, options);
+  };
+  try {
+    const [category] = await db.insert(stockCategories).values({ name: "Live fixture" }).returning();
+    const [item] = await db.insert(stockItems).values({
+      name: "Live keg", categoryId: category.id, countUnit: "keg",
+      containerSize: "50L", servesPerUnit: "88",
+    }).returning();
+    await db.insert(stockItemPosLinks).values({ stockItemId: item.id, squareVariationId: "live-pint", soldUnitFactor: "1" });
+    const [count] = await db.insert(stockCounts).values({
+      countedBy: "fixture", status: "submitted", periodStart: new Date("2026-01-01"), periodEnd: new Date("2026-02-01"),
+    }).returning();
+    await db.insert(stockCountLines).values({
+      countId: count.id, stockItemId: item.id, quantityUnits: "2",
+      countUnitSnapshot: "keg", baseUnitsPerCountUnit: "88",
+    });
+    assert.equal((await liveStock()).items[0].remaining, 176);
+    const calls = salesRequests;
+    assert.equal((await liveStock()).items[0].remaining, 176);
+    assert.equal(salesRequests, calls, "unchanged inputs reuse Square snapshot");
+    await db.update(stockItems).set({ servesPerUnit: "90" }).where(eq(stockItems.id, item.id));
+    assert.equal((await liveStock()).items[0].remaining, 176, "old count is not reinterpreted using today's yield");
+    const [delivery] = await db.insert(stockDeliveries).values({ enteredBy: "fixture", deliveredAt: new Date("2026-03-01") }).returning();
+    await db.insert(stockDeliveryLines).values({ deliveryId: delivery.id, stockItemId: item.id, quantityUnits: "1" });
+    const uncertain = (await liveStock()).items[0];
+    assert.equal(uncertain.remaining, null);
+    assert.match(uncertain.issue!, /deliveries have no saved yield/);
+    await db.update(stockItems).set({ servesPerUnit: "88" }).where(eq(stockItems.id, item.id));
+    assert.equal((await liveStock()).items[0].remaining, 264, "delivery is reflected without waiting five minutes");
+    await db.delete(stockDeliveries).where(eq(stockDeliveries.id, delivery.id));
+    assert.equal((await liveStock()).items[0].remaining, 176, "deleted delivery invalidates cache");
+    await db.update(stockCountLines).set({ baseUnitsPerCountUnit: null }).where(eq(stockCountLines.countId, count.id));
+    assert.match((await liveStock()).items[0].issue!, /no saved keg yield/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await db.delete(stockCountLines); await db.delete(stockDeliveryLines);
+    await db.delete(stockCounts); await db.delete(stockDeliveries);
+    await db.delete(stockItemPosLinks); await db.delete(stockItems); await db.delete(stockCategories);
   }
 });

@@ -16034,8 +16034,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       const id = parseInt(req.params.id, 10);
       const { periodStart, periodEnd, notes, status, lines } = req.body;
       await db.transaction(async tx => {
-      const [existing] = await tx.select().from(stockCounts).where(dEq(stockCounts.id, id)).for("update");
       await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
+      const [existing] = await tx.select().from(stockCounts).where(dEq(stockCounts.id, id)).for("update");
       if (!existing) return res.status(404).json({ error: "Count not found" });
       if (existing.status === "submitted") return res.status(400).json({ error: "Submitted counts cannot be edited" });
       if (new Date(periodStart ?? existing.periodStart) > new Date(periodEnd ?? existing.periodEnd)) return res.status(400).json({ error: "Start date must not be after end date" });
