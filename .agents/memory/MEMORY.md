@@ -1,3 +1,4 @@
+- [UK display formats](uk-display-formats.md) — UK dates and 12-hour am/pm times; venue timestamps use Europe/London.
 - [The 147 workspace structure](the-147-structure.md) — key non-obvious decisions made during the migration from a monolithic repo to pnpm workspace
 - [Square payment system bugs](square-payment-bugs.md) — confirmed root causes and fixes for "Payment Screen Issue" + loyalty reward issues
 - [Expo update safety](eas-ota-limit.md) — verify installed native compatibility, not runtime strings alone; follow current Expo publishing rules, not old CLI recipes

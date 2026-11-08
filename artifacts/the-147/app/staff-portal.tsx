@@ -1269,7 +1269,7 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
                             p.status === "SUCCESSFUL" ? Colors.brand.green :
                             p.status === "PENDING" ? "#9CA3AF" :
                             Colors.brand.red;
-                          const time = new Date(p.startedAt).toLocaleTimeString();
+                          const time = new Date(p.startedAt).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Europe/London" });
                           return (
                             <View key={p.requestId} style={styles.terminalListRow}>
                               <View style={[styles.terminalStatusDot, { backgroundColor: colour }]} />

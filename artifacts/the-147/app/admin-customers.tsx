@@ -70,7 +70,9 @@ const OUTCOME_LABELS: Record<string, { label: string; color: string; bg: string 
 function formatTimestamp(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, {
+    return d.toLocaleString("en-GB", {
+      timeZone: "Europe/London",
+      hour12: true,
       year: "numeric",
       month: "short",
       day: "numeric",
