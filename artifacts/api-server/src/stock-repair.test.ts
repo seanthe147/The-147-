@@ -14,7 +14,7 @@ test("isolated repair preserves history, blocks stale previews and validates ser
   };
   const app=express();app.use(express.json());
   registerStockRepair(app,((req:any,res:any,next:any)=>req.headers.authorization?next():res.sendStatus(401)),
-    ((req:any,res:any,next:any)=>req.headers.authorization==="manager"?next():res.sendStatus(403)));
+    ((req:any,res:any,next:any)=>{req.staffUsername="test-manager";return req.headers.authorization==="manager"?next():res.sendStatus(403);}));
   const server=app.listen(0);await new Promise<void>(r=>server.once("listening",r));
   const address=server.address() as any;
   const call=async(path:string,body?:any,auth="manager")=>{
@@ -55,11 +55,62 @@ test("isolated repair preserves history, blocks stale previews and validates ser
     const audit=await db.select().from(stockRepairAudit);assert.equal(audit.length,2);
     assert.equal((await call(`/history/${audit[0].id}`)).body.snapshot.before.counts[0].stockItemId,b.id);
     const [duplicate]=await db.insert(stockItems).values({name:"Test lager",categoryId:cat.id,countUnit:"keg",containerSize:"50L",servesPerUnit:"88"}).returning();
-    await db.insert(stockCountLines).values({stockItemId:duplicate.id,countId:count.id,quantityUnits:"2"});
+    const [duplicateLine]=await db.insert(stockCountLines).values({stockItemId:duplicate.id,countId:count.id,quantityUnits:"2",notes:"Second original",countUnitSnapshot:"keg",baseUnitsPerCountUnit:"88",unitCostPence:"12000"}).returning();
     const blocked=await call("");
     assert.match(blocked.body.duplicates[0].blockedReason,/same count/);
     assert.equal((await call("/apply",{version:blocked.body.version,confirmed:true})).status,400);
     assert.equal((await db.select().from(stockCountLines)).length,2);
+    const conflict=blocked.body.duplicates[0].countConflicts[0];
+    assert.equal(conflict.count.status,"submitted");
+    assert.equal(conflict.lines.length,2);
+    assert.equal(conflict.lines.find((l:any)=>l.id===duplicateLine.id).notes,"Second original");
+    const decision={version:blocked.body.version,keepId:a.id,countId:count.id,retainedLineId:duplicateLine.id,quantityUnits:"0",reason:"Repeated observation; physical stock confirmed empty",confirmed:true};
+    const originals=await db.select().from(stockCountLines);
+    const auditBefore=await db.select().from(stockRepairAudit);
+    for(const auth of ["","staff"]){
+      assert.equal((await call("/reconcile-count",decision,auth)).status,auth?403:401);
+      assert.equal((await call(`/history/${auditBefore[0].id}`,undefined,auth)).status,auth?403:401);
+    }
+    for(const change of [{quantityUnits:""},{quantityUnits:null},{quantityUnits:-1},{quantityUnits:"-1"},{quantityUnits:"NaN"},{quantityUnits:"Infinity"},{reason:" "},{reason:"x".repeat(2001)},{confirmed:false}]){
+      assert.equal((await call("/reconcile-count",{...decision,...change})).status,400);
+    }
+    assert.equal((await call("/reconcile-count",{...decision,retainedLineId:9999999})).status,409);
+    assert.deepEqual(await db.select().from(stockCountLines),originals);
+    assert.deepEqual(await db.select().from(stockRepairAudit),auditBefore);
+    // Changing notes after a preview is enough to invalidate the decision.
+    await db.update(stockCountLines).set({notes:"Changed concurrently"}).where(eq(stockCountLines.id,duplicateLine.id));
+    assert.equal((await call("/reconcile-count",decision)).status,409);
+    assert.equal((await db.select().from(stockCountLines)).length,2);
+    const fresh=await call("");
+    const result=await call("/reconcile-count",{...decision,version:fresh.body.version});
+    assert.equal(result.status,200,JSON.stringify(result.body));
+    const resolved=await db.select().from(stockCountLines);
+    assert.equal(resolved.length,1);
+    assert.equal(resolved[0].id,duplicateLine.id);
+    assert.equal(Number(resolved[0].quantityUnits),0); // explicit zero, never sum 1.25 + 2
+    assert.equal(resolved[0].notes,"Changed concurrently");
+    assert.equal(resolved[0].countUnitSnapshot,"keg");
+    assert.equal(Number(resolved[0].baseUnitsPerCountUnit),88);
+    assert.equal(Number(resolved[0].unitCostPence),12000);
+    assert.equal((await db.select().from(stockItems).where(eq(stockItems.id,duplicate.id)))[0].active,true);
+    const reconciledAudit=(await db.select().from(stockRepairAudit)).find(r=>r.action==="Reconcile duplicate count")!;
+    assert.equal(reconciledAudit.actor,"test-manager");
+    const saved:any=(await call(`/history/${reconciledAudit.id}`)).body.snapshot;
+    assert.equal(saved.decision.reason,decision.reason);
+    assert.equal(saved.before.counts.length,2);
+    assert.equal(saved.decision.originalLines.length,2);
+    assert.equal(saved.before.counts.find((l:any)=>l.id===duplicateLine.id).quantityUnits,"2");
+    assert.equal(saved.before.counts.find((l:any)=>l.id!==duplicateLine.id).notes,"preserve");
+    assert.equal(saved.after.counts.length,1);
+    assert.equal((await call("/reconcile-count",{...decision,version:fresh.body.version})).status,409);
+    const mergePreview=await call("");
+    assert.equal(mergePreview.body.duplicates[0].blockedReason,null);
+    assert.equal((await call("/apply",{version:mergePreview.body.version,confirmed:true})).status,200);
+    const finalLine=(await db.select().from(stockCountLines))[0];
+    assert.equal(finalLine.stockItemId,a.id);
+    assert.equal(Number(finalLine.quantityUnits),0);
+    assert.equal(Number(finalLine.unitCostPence),12000);
+    assert.equal(finalLine.notes,"Changed concurrently");
     const creation={key:"LWC-16680157",categoryId:cat.id,confirmed:true};
     assert.equal((await call("/create-invoice",creation)).status,200);
     assert.equal((await call("/create-invoice",creation)).status,409);

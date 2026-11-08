@@ -4,6 +4,27 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const html = readFileSync(new URL("./templates/staff-dashboard.html", import.meta.url), "utf8");
+test("an unpriced 50L pack never inherits the 100L price or an earlier suggestion",()=>{
+  const nodes:any={delQty1:{value:"1"},delPack1:{value:""},delConv1:{textContent:""},delCost1:{value:"",dataset:{}}};
+  const context=vm.createContext({
+    _stockItems:[{id:1,countUnit:"keg",containerSize:"100L",unitCostPence:"30000"}],
+    el:(id:string)=>nodes[id],
+    stockItemPacks:()=>[{label:"50L keg",quantityUnits:0.5,costPence:null}],
+    stockCostNum:(value:any)=>value==null?null:Number(value),
+    stockFmtQty:String,stockUnitWord:()=>"kegs",stockPence:String,
+  });
+  const start=html.indexOf("  function stockDelSuggest(id)");
+  const end=html.indexOf("  function cancelDelivery()",start);
+  vm.runInContext(html.slice(start,end)+"\nstockDelSuggest(1)",context);
+  assert.equal(nodes.delCost1.value,"300.00");
+  nodes.delPack1.value="0";
+  vm.runInContext("stockDelSuggest(1)",context);
+  assert.equal(nodes.delCost1.value,"");
+  assert.doesNotMatch(nodes.delConv1.textContent,/suggested/);
+  nodes.delCost1.value="165.00";nodes.delCost1.dataset.touched="1";
+  vm.runInContext("stockDelSuggest(1)",context);
+  assert.equal(nodes.delCost1.value,"165.00"); // an actual manually entered invoice total survives
+});
 test("invoice review distinguishes applied packs and missing products and excludes archived choices",()=>{
   const list={innerHTML:""};
   const row={name:"Guinness",supplier:"LWC",supplierCode:"abc",packCostPence:100,packUnits:1,invoiceDate:"2026-09-02",matches:[{id:1,name:"Guinness",containerSize:"50L"}]};

@@ -18,7 +18,7 @@ async function lock(tx:any) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(14700031)`);
   await tx.execute(sql`SELECT pg_advisory_xact_lock(14700033)`);
   // Also blocks older entry endpoints that do not participate in advisory locking.
-  await tx.execute(sql`LOCK TABLE stock_items, stock_item_pos_links, stock_count_lines, stock_delivery_lines IN SHARE ROW EXCLUSIVE MODE`);
+  await tx.execute(sql`LOCK TABLE stock_items, stock_item_pos_links, stock_counts, stock_deliveries, stock_count_lines, stock_delivery_lines IN SHARE ROW EXCLUSIVE MODE`);
 }
 function failure(message:string,status=400):never {throw Object.assign(new Error(message),{status});}
 export function registerStockRepair(app:Express,auth:RequestHandler,manager:RequestHandler) {
@@ -37,6 +37,35 @@ export function registerStockRepair(app:Express,auth:RequestHandler,manager:Requ
     const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)failure("Invalid history ID");
     const [record]=await db.select().from(stockRepairAudit).where(eq(stockRepairAudit.id,id));
     if(!record)failure("Audit not found",404);res.json(record);
+  }));
+  app.post("/api/stock/repair/reconcile-count",auth,manager,handle(async(req:any,res:any)=>{
+    const {version,keepId,countId,retainedLineId,quantityUnits,reason,confirmed}=req.body??{};
+    if(confirmed!==true||typeof version!=="string"||
+      ![keepId,countId,retainedLineId].every(id=>Number.isSafeInteger(id)&&id>0)||
+      typeof quantityUnits!=="string"||!/^\d+(?:\.\d+)?$/.test(quantityUnits)||
+      !Number.isFinite(Number(quantityUnits))||Number(quantityUnits)>1e9||
+      typeof reason!=="string"||!reason.trim()||reason.trim().length>2000)
+      failure("Choose an original entry, enter an explicit non-negative quantity and a reason (up to 2000 characters), and confirm.");
+    clearCatalogVariationsCache();const variations=await listCatalogVariations();
+    if(!variations.length)failure("Square catalogue unavailable",503);
+    await db.transaction(async tx=>{
+      await lock(tx);const before=await snapshot(tx);const plan=repairPlan(before,variations);
+      if(version!==plan.version)failure("Stock or Square data changed. Refresh the preview before reconciling.",409);
+      const group=plan.duplicates.find(g=>g.keepId===keepId);
+      const conflict=group?.countConflicts.find(c=>c.countId===countId);
+      const retained=conflict?.lines.find((l:any)=>l.id===retainedLineId);
+      if(!conflict||!retained)failure("This count conflict or retained entry is no longer available.",409);
+      // Keep the chosen row's historical unit, conversion, cost and notes unchanged.
+      // No quantity is inferred or added: the manager explicitly supplies it.
+      await tx.update(stockCountLines).set({quantityUnits}).where(eq(stockCountLines.id,retainedLineId));
+      await tx.delete(stockCountLines).where(inArray(stockCountLines.id,conflict.lines.filter((l:any)=>l.id!==retainedLineId).map((l:any)=>l.id)));
+      await tx.insert(stockRepairAudit).values({
+        action:"Reconcile duplicate count",actor:req.staffUsername??"manager",
+        snapshot:{before,decision:{keepId,countId,retainedLineId,quantityUnits,reason:reason.trim(),
+          originalLines:conflict.lines},after:await snapshot(tx)},
+      });
+    });
+    res.json({message:"Count conflict resolved. Originals preserved in audit history. Review the refreshed preview before consolidating."});
   }));
   app.post("/api/stock/repair/apply",auth,manager,handle(async(req:any,res:any)=>{
     if(req.body?.confirmed!==true || typeof req.body.version!=="string")failure("Preview and confirmation required");

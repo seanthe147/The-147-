@@ -14,12 +14,19 @@ export function repairPlan(state: any, variations: any[]) {
     g.sort((a,b) => a.id-b.id);
     const ids = new Set(g.map(i=>i.id));
     const histories = counts.filter((l: any)=>ids.has(l.stockItemId));
-    const overlapping = new Set(histories.map((l: any)=>l.countId)).size !== histories.length;
+    const countConflicts = [...new Set(histories.map((l:any)=>l.countId))].flatMap(countId=>{
+      const lines=histories.filter((l:any)=>l.countId===countId);
+      if(lines.length<2)return [];
+      return [{countId,count:state.countHeaders?.find((c:any)=>c.id===countId)??null,
+        lines:lines.map((l:any)=>({...l,itemName:g.find(i=>i.id===l.stockItemId)?.name,
+          currentCountUnit:g.find(i=>i.id===l.stockItemId)?.countUnit}))}];
+    });
+    const overlapping = countConflicts.length>0;
     const identity = (i:any)=>JSON.stringify([i.supplier,i.supplierCode,i.caseSize,i.servesPerUnit,i.unitCostPence,i.purchasePacks]);
     const incompatible = g.some(i=>identity(i)!==identity(g[0]));
     const groupLinks=links.filter((l:any)=>ids.has(l.stockItemId));
     const disagree=groupLinks.some((l:any)=>groupLinks.some((other:any)=>other.squareVariationId===l.squareVariationId&&Number(other.soldUnitFactor)!==Number(l.soldUnitFactor)));
-    return {keepId:g[0].id,archiveIds:g.slice(1).map(i=>i.id),name:g[0].name,
+    return {keepId:g[0].id,archiveIds:g.slice(1).map(i=>i.id),name:g[0].name,countConflicts,
       blockedReason:overlapping?"Both copies appear in the same count; quantities need manual reconciliation.":incompatible?"Supplier identity, costs, yields or purchase packs differ; review before merging.":disagree?"Serving conversions disagree; review before merging.":null};
   });
   const canonical = (id: number) => duplicates.find(g=>!g.blockedReason && g.archiveIds.includes(id))?.keepId ?? id;

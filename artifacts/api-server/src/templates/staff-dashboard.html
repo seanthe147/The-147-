@@ -9632,9 +9632,9 @@
     var units=pk?q*Number(pk.quantityUnits):(it.caseSize?q*it.caseSize:q);
     var sug=null;
     if(pk&&stockCostNum(pk.costPence)!==null)sug=stockCostNum(pk.costPence)*q;
-    else if(stockCostNum(it.unitCostPence)!==null)sug=stockCostNum(it.unitCostPence)*units;
+    else if(!pk&&stockCostNum(it.unitCostPence)!==null)sug=stockCostNum(it.unitCostPence)*units;
     conv.textContent='= '+stockFmtQty(units)+' '+stockUnitWord(it.countUnit,units)+(sug!==null?' · suggested '+stockPence(Math.round(sug))+' (check invoice)':'');
-    if(cost&&!cost.dataset.touched&&sug!==null)cost.value=(Math.round(sug)/100).toFixed(2);
+    if(cost&&!cost.dataset.touched)cost.value=sug===null?'':(Math.round(sug)/100).toFixed(2);
   }
   function cancelDelivery(){el('stockDeliveryForm').style.display='none';}
 
@@ -14196,6 +14196,39 @@
     var d=(_srData.duplicates||[]).filter(function(x){return !x.blockedReason;}).length;
     return d+(_srData.unsafeLinks||[]).length;
   }
+  function srCountConflicts(groups){
+    return groups.map(function(g){return (g.countConflicts||[]).map(function(c){
+      var key=g.keepId+'-'+c.countId;
+      var cells=c.lines.map(function(l){
+        return '<td style="min-width:210px;vertical-align:top;padding:12px;border:1px solid var(--border)"><b>Stock #'+escHtml(l.stockItemId)+' · entry #'+escHtml(l.id)+'</b>'+
+          '<p>Quantity: '+escHtml(l.quantityUnits)+'</p><p>Recorded unit: '+escHtml(l.countUnitSnapshot||'Unknown (not recorded)')+'</p>'+
+          '<p>Current catalogue unit: '+escHtml(l.currentCountUnit||'Unknown')+'</p><p>Base units per count unit: '+escHtml(l.baseUnitsPerCountUnit==null?'Unknown':l.baseUnitsPerCountUnit)+'</p>'+
+          '<p>Cost per count unit: '+escHtml(l.unitCostPence==null?'Unknown':l.unitCostPence+' pence')+'</p><p>Notes: '+escHtml(l.notes||'None')+'</p></td>';
+      }).join('');
+      return '<div class="sr-box" style="margin-top:14px" data-testid="count-conflict-'+key+'"><h4>'+escHtml(g.name)+' · count #'+escHtml(c.countId)+'</h4>'+
+        '<p>'+escHtml(c.count?c.count.status+' · '+String(c.count.periodStart).slice(0,10)+' to '+String(c.count.periodEnd).slice(0,10):'Historical count')+'</p>'+
+        '<div style="overflow-x:auto"><table aria-label="Original count entries"><tbody><tr>'+cells+'</tr></tbody></table></div>'+
+        '<div class="sr-note">Do not add these quantities automatically. Choose the entry whose recorded unit, conversion, cost and notes should remain, then enter the correct quantity in that entry’s unit. Unknown historical values remain unknown. All originals are preserved in audit history. This does not merge the stock records.</div>'+
+        '<form onsubmit="reconcileStockCount(event,'+g.keepId+','+c.countId+')"><div class="sr-fields">'+
+        '<div><label for="srRetain-'+key+'">Entry metadata to retain</label><select class="form-input" id="srRetain-'+key+'" required><option value="">Choose an original entry…</option>'+
+        c.lines.map(function(l){return '<option value="'+l.id+'">Entry #'+l.id+' · stock #'+l.stockItemId+' · '+escHtml(l.countUnitSnapshot||'unit not recorded')+'</option>';}).join('')+'</select></div>'+
+        '<div><label for="srQuantity-'+key+'">Retained quantity (chosen entry’s unit)</label><input class="form-input" id="srQuantity-'+key+'" type="number" min="0" max="1000000000" step="any" required></div>'+
+        '<div><label for="srReason-'+key+'">Reason for this decision</label><textarea class="form-input" id="srReason-'+key+'" maxlength="2000" required></textarea></div></div>'+
+        '<label class="sr-check"><input type="checkbox" required> I confirm this quantity and the selected entry’s metadata are correct.</label>'+
+        '<button class="btn btn-warning btn-sm" type="submit" '+(_srBusy||_srStale?'disabled':'')+'>Resolve count conflict</button></form></div>';
+    }).join('');}).join('');
+  }
+  async function reconcileStockCount(event,keepId,countId){
+    event.preventDefault();
+    if(_srBusy||_srLoading||_srStale||!_srData)return;
+    var key=keepId+'-'+countId,quantity=el('srQuantity-'+key).value,reason=el('srReason-'+key).value.trim();
+    if(!quantity.trim()||!reason){toast('Enter a quantity and reason.','error');return;}
+    var payload={version:_srData.version,keepId:keepId,countId:countId,retainedLineId:Number(el('srRetain-'+key).value),quantityUnits:quantity,reason:reason,confirmed:true};
+    _srBusy=true;var button=event.target.querySelector('button[type="submit"]');button.disabled=true;
+    try{var j=await srPost('/api/stock/repair/reconcile-count',payload);_srBusy=false;await srAfterMutation(j.message);}
+    catch(e){_srBusy=false;if(e.status===409){_srStale=true;renderStockRepair();}else{button.disabled=false;toast('Reconciliation failed: '+e.message,'error');}}
+  }
+  window.reconcileStockCount=reconcileStockCount;
   function renderStockRepair(){
     var p=el('stockRepairPanel'),d=_srData;if(!d)return;
     var dups=d.duplicates||[],act=dups.filter(function(x){return !x.blockedReason;}),blk=dups.filter(function(x){return x.blockedReason;}),un=d.unsafeLinks||[];
@@ -14211,6 +14244,7 @@
     h+='<div class="sr-box"><h4>Blocked duplicate merges <span class="pill pill-red">'+blk.length+'</span></h4><div class="sr-scroll">'+(blk.length?blk.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-blocked-'+i+'"><strong>'+escHtml(x.name)+'</strong><small>Keep #'+escHtml(x.keepId)+' vs '+x.archiveIds.map(function(a){return '#'+escHtml(a);}).join(', ')+'</small><small style="color:var(--red)">'+escHtml(x.blockedReason)+'</small></div>';}).join(''):srEmpty('No blocked conflicts.'))+'</div></div>';
     h+='<div class="sr-box"><h4>Unsafe Square links to quarantine <span class="pill pill-amber">'+un.length+'</span></h4><div class="sr-scroll">'+(un.length?un.map(function(x,i){return '<div class="sr-row" data-testid="row-repair-unsafe-'+i+'"><strong>'+escHtml(x.name)+'</strong> → '+escHtml(x.variationName||x.variationId)+'<small>'+escHtml(x.reason)+'</small></div>';}).join(''):srEmpty('No unsafe links.'))+'</div></div>';
     h+='</div>';
+    h+=srCountConflicts(blk);
     h+='<div class="sr-box" style="margin-top:14px"><h4>Apply repair</h4><div class="sr-note">Applying will: <b>merge exact duplicates</b> into the kept item, preserving their historical quantities, costs and notes; skip <b>blocked duplicate merges</b> (e.g. same-count clashes); and <b>quarantine invalid or ambiguous Square links</b>, including those on blocked records, rather than guessing a replacement. You can relink manually below.</div>'+
       '<label class="sr-check"><input type="checkbox" id="srApplyConfirm" data-testid="checkbox-repair-confirm" onchange="srSyncApply()" '+(n?'':'disabled')+'> I have reviewed this preview and confirm the repair.</label>'+
       '<div class="sr-actions"><button class="btn btn-warning btn-sm" id="srApplyBtn" data-testid="button-repair-apply" disabled onclick="applyStockRepair()">Apply repair ('+n+' change'+(n===1?'':'s')+')</button>'+(n?'':'<span style="font-size:12px;color:var(--text-2)">No actionable issues.</span>')+'</div></div>';
