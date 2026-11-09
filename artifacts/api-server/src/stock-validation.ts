@@ -4,7 +4,13 @@ const quantity = z.union([z.string().trim().min(1), z.number()])
   .refine(v => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1000000000, "Quantity must be a valid non-negative number")
   .transform(v => String(Number(v)));
 const positive = quantity.refine(v => Number(v) > 0, "Must be greater than zero");
-const date = z.string().refine(v => v.trim() !== "" && Number.isFinite(Date.parse(v)), "Invalid date");
+const date = z.string().refine(v => {
+  // Reject ambiguous regional dates and dates JS silently rolls into the next month.
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/.exec(v);
+  if (!match || !Number.isFinite(Date.parse(v))) return false;
+  const day = new Date(`${match[1]}T00:00:00Z`);
+  return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === match[1];
+}, "Use a valid ISO date (YYYY-MM-DD) or timestamp");
 const id = z.number().int().positive();
 const text = z.string().trim().max(500);
 const money = z.number().int().min(0).max(1000000000);

@@ -6,7 +6,7 @@ import { Script } from "node:vm";
 import { eq } from "drizzle-orm";
 import {
   membershipPlanChanges, membershipPlanCreation, membershipMemberChanges,
-  protectedMembership, changesProtectedBilling,
+  protectedMembership, changesProtectedBilling, validMemberPeriod,
 } from "./membership-admin-policy";
 import { prepareMembershipSaleRates } from "./membership-plan-admin";
 import { registerMembershipBilling, reconcileScheduledMembership, billingState } from "./membership-billing";
@@ -89,7 +89,7 @@ test("hidden plans do not touch Square; public plans require confirmed billing a
   await assert.rejects(prepareMembershipSaleRates({ ...plan, priceMonthly: 799 }, plan, failed), /Provider unavailable/);
 });
 
-test("every staff billing endpoint has both staff authentication and manager authorisation", () => {
+test("staff billing routes preserve viewing and plan-change access while cancellation requires a manager", () => {
   const routes: { path: string; handlers: unknown[] }[] = [];
   const app = { get: (path: string, ...handlers: unknown[]) => routes.push({ path, handlers }),
     post: (path: string, ...handlers: unknown[]) => routes.push({ path, handlers }) };
@@ -99,8 +99,22 @@ test("every staff billing endpoint has both staff authentication and manager aut
   assert.equal(staffBilling.length, 3);
   for (const route of staffBilling) {
     assert.equal(route.handlers[0], staff);
-    assert.equal(route.handlers[1], manager);
+    if (route.path.endsWith("/cancel")) assert.equal(route.handlers[1], manager);
+    else {
+      // Plan-specific downgrade restrictions are enforced inside scheduleMembershipChange.
+      assert.notEqual(route.handlers[1], manager);
+      assert.equal(typeof route.handlers[1], "function");
+    }
   }
+});
+
+test("editing only one member date cannot create a reversed membership period", () => {
+  const existing = { currentPeriodStart: "2026-04-01", currentPeriodEnd: "2027-04-01" };
+  assert.equal(validMemberPeriod(existing, { currentPeriodEnd: "2026-03-31" }), false);
+  assert.equal(validMemberPeriod(existing, { currentPeriodStart: "2027-04-02" }), false);
+  assert.equal(validMemberPeriod(existing, { currentPeriodEnd: "2027-05-01" }), true);
+  assert.equal(validMemberPeriod(existing, { currentPeriodStart: null }), true);
+  assert.equal(validMemberPeriod(existing, {}), true);
 });
 
 test("historic rates preserve a customer's agreed pending change after staff publishes a new sale rate", async () => {

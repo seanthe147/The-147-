@@ -18,7 +18,7 @@ import * as square from "../square";
 import { notifyMembershipPaymentFailure } from "../membership-failure-notifications";
 import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
 import { processSquareMembershipEvent, processMembershipPosPayment, refreshExternalSquareMembership, registerSquareMembershipSync, recordLegacyMembershipPayment, validatePosMapping } from "../membership-square-sync";
-import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling } from "../membership-admin-policy";
+import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling, validMemberPeriod } from "../membership-admin-policy";
 import { prepareMembershipSaleRates } from "../membership-plan-admin";
 import { addCalendarMonths, billingPeriodEnd, minimumTermMonths, snookerRateDiscountPercent, squareCadenceForPlan, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
@@ -13828,7 +13828,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const plan = await storage.getMembershipPlan(planId);
       if (!plan?.active) return res.status(400).json({ message: "Choose an active plan." });
     }
-    if (currentPeriodStart && currentPeriodEnd && currentPeriodEnd < currentPeriodStart) return res.status(400).json({ message: "The expiry date must not precede the start date." });
+    if (!validMemberPeriod(sub, parsed.data)) return res.status(400).json({ message: "The expiry date must not precede the start date." });
     const updates: Record<string, unknown> = {};
     if (staffNotes !== undefined) updates.staffNotes = staffNotes;
     if (planId !== undefined && !protectedMembership(sub)) updates.planId = planId;

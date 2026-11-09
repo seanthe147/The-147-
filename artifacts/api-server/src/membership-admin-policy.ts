@@ -40,6 +40,15 @@ export const membershipMemberChanges = z.object({
   currentPeriodEnd: calendarDate,
 }).strict();
 
+export function validMemberPeriod(
+  existing: { currentPeriodStart: string | null; currentPeriodEnd: string | null },
+  changes: { currentPeriodStart?: string | null; currentPeriodEnd?: string | null },
+): boolean {
+  const start = changes.currentPeriodStart === undefined ? existing.currentPeriodStart : changes.currentPeriodStart;
+  const end = changes.currentPeriodEnd === undefined ? existing.currentPeriodEnd : changes.currentPeriodEnd;
+  return !start || !end || end.slice(0, 10) >= start.slice(0, 10);
+}
+
 export function protectedMembership(sub: { squareSubscriptionId?: string | null; source: string }): boolean {
   return !!sub.squareSubscriptionId || /^(?:square|wix|app)(?:_|$)/.test(sub.source);
 }

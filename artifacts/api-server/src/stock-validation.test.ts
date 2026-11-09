@@ -27,3 +27,13 @@ test("counts preserve explicit zero, reject bad status and reversed dates", () =
   assert.equal(stockCountInput.safeParse({ ...count, lines: [{ stockItemId: 1, quantityUnits: "-1" }] }).success, false);
   assert.equal(stockCountInput.safeParse({ lines: [] }).success, true);
 });
+
+test("stock dates reject impossible calendar days and ambiguous regional strings", () => {
+  for (const deliveredAt of ["2026-02-30", "2026-02-29", "2026-04-31T12:00:00Z", "11/09/2026", "9", "2026-13-01"]) {
+    assert.equal(stockDeliveryInput.safeParse({ deliveredAt, lines: [{ stockItemId: 1, quantityUnits: "1" }] }).success, false, deliveredAt);
+    assert.equal(stockCountInput.safeParse({ periodEnd: deliveredAt }).success, false, deliveredAt);
+  }
+  for (const deliveredAt of ["2028-02-29", "2026-11-09T12:30", "2026-11-09T12:30:00.000Z", "2026-07-01T12:30:00+01:00"]) {
+    assert.equal(stockDeliveryInput.safeParse({ deliveredAt, lines: [{ stockItemId: 1, quantityUnits: "1" }] }).success, true, deliveredAt);
+  }
+});
