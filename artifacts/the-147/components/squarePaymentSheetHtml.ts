@@ -981,7 +981,9 @@ export function buildPaymentSheetHtml(opts: {
       // Android WebView, so Square falls back to an intent:// URL that we
       // block, causing a confusing error. IS_ANDROID is set from Platform.OS
       // at build time in SquarePaymentSheet.tsx.
-      if (!IS_ANDROID) {
+      // Native Android uses Square's native wallet. The iOS embedded browser
+      // is not configured for Google Pay popups; leave Apple Pay/card available.
+      if (${JSON.stringify(opts.platform !== "android" && opts.platform !== "ios")}) {
       try {
         var pr2 = paymentRequest();
         payments.googlePay(pr2).then(function (gp) {
@@ -1014,7 +1016,7 @@ export function buildPaymentSheetHtml(opts: {
       } catch (e) {
         diag("google_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
       }
-      } // end if (!IS_ANDROID)
+      } // end browser Google Pay
       } // end initWallets
 
       } // end bootSquare

@@ -16,6 +16,18 @@ const baseOptions = {
   currency: "GBP",
 };
 
+test("native card fields skip embedded Google Pay without removing Apple Pay", () => {
+  for (const platform of ["ios", "android", "web"]) {
+    const html = buildCardFieldHtml({ ...baseOptions, platform });
+    assert.match(html, new RegExp(`if \\(${platform === "web"}\\) \\{\\s*try \\{\\s*var pr2 = paymentRequest\\(\\);`));
+    assert.match(html, /payments\.applePay\(pr\)/);
+    const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+    for (const script of withoutComments.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+      new Function(script[1]);
+    }
+  }
+});
+
 test("uses the official light Google Pay button in the dark card field", () => {
   const html = buildCardFieldHtml(baseOptions);
 

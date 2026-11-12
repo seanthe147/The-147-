@@ -5,6 +5,19 @@ description: Root causes and fixes for "Payment Screen Issue" alert and loyalty 
 
 ## Google Pay merchant registration
 
+The native iOS checkout deliberately offers Apple Pay/card, not Google Pay
+inside its embedded browser. Android uses the native Square Google Pay hook;
+ordinary browser checkout can still initialize Square web Google Pay.
+
+**Why:** Device screenshots showed the iOS embedded flow advertising a wallet
+that then failed as unsupported. Modern Square documentation supports WebViews
+with additional configuration, so this is a constraint of our current setup,
+not a claim that Google Pay never works on iOS.
+
+**How to apply:** Keep both embedded payment templates aligned. Re-enable iOS
+Google Pay only after configuring and testing its required popup/payment flow
+on a real device.
+
 Google Pay submission review rejected a black button on a dark checkout surface
 and custom button typography. Use official complete button artwork or SDK-rendered
 buttons, not a Google G mark next to locally typeset text.

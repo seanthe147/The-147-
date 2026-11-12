@@ -64,6 +64,18 @@ const baseOptions = {
   currency: "GBP",
 };
 
+test("embedded native checkout skips web Google Pay while browser checkout retains it", () => {
+  for (const platform of ["ios", "android", "web"]) {
+    const html = buildPaymentSheetHtml({ ...baseOptions, platform });
+    assert.match(html, new RegExp(`if \\(${platform === "web"}\\) \\{\\s*try \\{\\s*var pr2 = paymentRequest\\(\\);`));
+    assert.match(html, /payments\.applePay\(pr\)/);
+    const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+    for (const script of withoutComments.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+      new Function(script[1]);
+    }
+  }
+});
+
 test("renders the payment form with light appearance tokens", () => {
   const html = buildPaymentSheetHtml({ ...baseOptions, appearance: "light" });
 

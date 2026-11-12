@@ -582,7 +582,8 @@ export function buildCardFieldHtml(opts: {
         // Skipped entirely on Android: Payment Request API unavailable in
         // Android WebView — Square falls back to intent:// which we block,
         // producing a confusing error. IS_ANDROID set from Platform.OS.
-        if (!IS_ANDROID) {
+        // Native wallets are handled outside this embedded Google Pay path.
+        if (${JSON.stringify(opts.platform !== "android" && opts.platform !== "ios")}) {
         try {
           var pr2 = paymentRequest();
           payments.googlePay(pr2).then(function (gp) {
