@@ -11,6 +11,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eas-build-pre-install": "node scripts/prepare-android-firebase.js",
     "build:android": "pnpm --dir ../.. run validate:release && EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile production --non-interactive",
     "build:android:preview": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile preview --non-interactive",
     "update:production": "pnpm --dir ../.. run validate:release && EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel production --message",
