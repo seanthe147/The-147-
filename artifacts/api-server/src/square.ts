@@ -664,15 +664,26 @@ export function isAmbiguousPaymentError(err: unknown): boolean {
 
 // ── Subscription helpers ──────────────────────────────────────────────────────
 
-export async function createSquareCustomer(name: string, email: string, phone?: string) {
+export async function createSquareCustomer(name: string, email: string, phone?: string, birthday?: string | null) {
   const data = await squareRequest("POST", "/v2/customers", {
     given_name: name.split(" ")[0],
     family_name: name.split(" ").slice(1).join(" ") || "",
     email_address: email,
     phone_number: phone ? toE164(phone) : undefined,
+    birthday: birthday || undefined,
     idempotency_key: `cust-${email}-${Date.now()}`,
   });
   return data.customer;
+}
+
+/** Sparse update: never overwrite names, groups or other customer fields. */
+export async function updateSquareCustomerBirthday(customerId: string, birthday: string) {
+  await squareRequest("PUT", `/v2/customers/${encodeURIComponent(customerId)}`, { birthday });
+}
+
+export async function getSquareCustomer(customerId: string) {
+  const result = await squareRequest("GET", `/v2/customers/${encodeURIComponent(customerId)}`);
+  return result.customer;
 }
 
 export async function findSquareCustomerByEmail(email: string) {

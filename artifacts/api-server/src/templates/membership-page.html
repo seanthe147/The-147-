@@ -433,6 +433,8 @@
           </div>
           <div class="fld"><label for="rEmail">Email</label><input type="email" id="rEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="fld"><label for="rPhone">Phone</label><input type="tel" id="rPhone" placeholder="07xxx xxxxxx" autocomplete="tel"></div>
+          <div class="fld"><label for="rDob">Date of birth (required, DD/MM/YYYY)</label><input type="text" id="rDob" placeholder="DD/MM/YYYY" autocomplete="bday" inputmode="numeric" maxlength="10" required></div>
+          <p class="form-note">Shared with your Square customer record. Under-18s can join; alcohol purchases still require age checks.</p>
           <div class="fld"><label for="rPass">Password</label><input type="password" id="rPass" placeholder="Min. 6 characters" autocomplete="new-password"></div>
           <p class="form-note" style="margin-bottom:6px">Your account works across The 147 app and this website.</p>
           <label for="rConsent" id="rConsentRow" class="consent-row">
@@ -457,6 +459,12 @@
         <form class="tab-panel" id="panelLogin" onsubmit="doLogin();return false">
           <div class="fld"><label for="lEmail">Email</label><input type="email" id="lEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="fld"><label for="lPass">Password</label><input type="password" id="lPass" placeholder="Your password" autocomplete="current-password"></div>
+          <div class="fld" id="birthdayPrompt" style="display:none">
+            <label for="existingDob">Add your date of birth (DD/MM/YYYY)</label>
+            <input type="text" id="existingDob" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
+            <p class="form-note">Required before joining. This is shared with your Square customer record.</p>
+            <button type="button" class="submit-btn" onclick="saveBirthdayAndJoin()">Save birthday &amp; continue</button>
+          </div>
           <label id="joinTermsRow" class="consent-row">
             <input type="checkbox" id="joinTerms">
             <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
@@ -1337,17 +1345,36 @@
   })();
 
   /* ── register ── */
+  function birthdayISO(value){
+    const match=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+    return match?match[3]+'-'+match[2]+'-'+match[1]:null;
+  }
+  window.saveBirthdayAndJoin=async function(){
+    const tok=authToken,gen=sessionGeneration;
+    const dateOfBirth=birthdayISO(document.getElementById('existingDob').value);
+    if(!dateOfBirth){showFieldError('loginErr','Enter your date of birth as DD/MM/YYYY.','existingDob');return;}
+    try{
+      const r=await fetch(API+'/api/customers/me',{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({dateOfBirth})});
+      const d=await r.json();
+      if(!owns(tok,gen))return;
+      if(!r.ok){showFieldError('loginErr',d.message||'Could not save birthday.','existingDob');return;}
+      document.getElementById('birthdayPrompt').style.display='none';
+      await doJoin();
+    }catch{if(owns(tok,gen))showFieldError('loginErr','Could not save birthday. Please retry.','existingDob');}
+  };
   async function doRegister(){
     const first=document.getElementById('rFirst').value.trim();
     const last=document.getElementById('rLast').value.trim();
     const email=document.getElementById('rEmail').value.trim();
     const phone=document.getElementById('rPhone').value.trim();
     const pass=document.getElementById('rPass').value;
+    const dateOfBirth=birthdayISO(document.getElementById('rDob').value);
     const consent=document.getElementById('rConsent').checked;
     const err=document.getElementById('regErr');
     err.classList.remove('show');
     if(!first||!last){showFieldError('regErr','Please enter your full name.',first?'rLast':'rFirst');return}
     if(!email||!email.includes('@')){showFieldError('regErr','Please enter a valid email address.','rEmail');return}
+    if(!dateOfBirth){showFieldError('regErr','Enter your date of birth as DD/MM/YYYY.','rDob');return}
     if(pass.length<6){showFieldError('regErr','Password must be at least 6 characters.','rPass');return}
     if(!consent){showFieldError('regErr','Please tick the box to agree to the Privacy Policy.','rConsent');return}
     const btn=document.getElementById('regBtn');
@@ -1355,7 +1382,7 @@
     try{
       const r=await fetch(API+'/api/customers/register',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({name:first+' '+last,email,phone:phone||null,password:pass,privacyConsent:true}),
+        body:JSON.stringify({name:first+' '+last,email,phone:phone||null,password:pass,privacyConsent:true,dateOfBirth}),
       });
       const d=await r.json();
       if(!r.ok){err.textContent=d.message||'Registration failed.';err.classList.add('show');return}
@@ -1518,6 +1545,11 @@
         // bounce back to form with error
         document.getElementById('successPane').classList.remove('show');
         document.getElementById('formPane').style.display='';
+        if(d.code==='DOB_REQUIRED'){
+          switchTab('login');
+          document.getElementById('birthdayPrompt').style.display='';
+          document.getElementById('existingDob').focus();
+        }
         const errEl=activeTab==='reg'?document.getElementById('regErr'):document.getElementById('loginErr');
         errEl.textContent=d.message||'Could not activate membership.';errEl.classList.add('show');
         return;

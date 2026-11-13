@@ -15,6 +15,7 @@ import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as 
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
+import { birthdayError } from "../customer-birthday";
 import { notifyMembershipPaymentFailure } from "../membership-failure-notifications";
 import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
 import { processSquareMembershipEvent, processMembershipPosPayment, refreshExternalSquareMembership, registerSquareMembershipSync, recordLegacyMembershipPayment, validatePosMapping } from "../membership-square-sync";
@@ -10125,7 +10126,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         phone: verifiedCustomer.phone,
         squareCustomerId: verifiedCustomer.squareCustomerId ?? null,
       };
-      if (customer.squareCustomerId) return; // already enrolled
+      if (customer.squareCustomerId) {
+        if (verifiedCustomer.dateOfBirth) await square.updateSquareCustomerBirthday(customer.squareCustomerId, verifiedCustomer.dateOfBirth);
+        return;
+      }
 
       const existing = await square.findSquareCustomerByEmail(customer.email);
       let sqCustomerId: string;
@@ -10135,7 +10139,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         console.log(`[Enroll] customer #${customer.id} linked to existing Square customer ${sqCustomerId}`);
       } else {
         const sqCustomer = await square.createSquareCustomer(
-          customer.name, customer.email, customer.phone ?? undefined
+          customer.name, customer.email, customer.phone ?? undefined, verifiedCustomer.dateOfBirth
         );
         sqCustomerId = sqCustomer.id;
         const groupId = await square.getOrCreateCustomerGroup("The 147 Loyalty").catch(() => null);
@@ -10144,6 +10148,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       await storage.setSquareCustomerId(customer.id, sqCustomerId);
+      if (existing && verifiedCustomer.dateOfBirth) await square.updateSquareCustomerBirthday(sqCustomerId, verifiedCustomer.dateOfBirth);
 
       // Enrol in loyalty programme if they provided a phone number
       if (customer.phone) {
@@ -10999,31 +11004,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
     }
-    // Date of birth is optional at sign-up. If provided, validate it the same
-    // way as PATCH /api/customers/me so we can't accept malformed values that
-    // would later break the birthday-bonus window logic.
-    let dobToStore: string | null = null;
-    if (dateOfBirth !== undefined && dateOfBirth !== null && dateOfBirth !== "") {
-      const dob = String(dateOfBirth).trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-        return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
-      }
-      const [yStr, mStr, dStr] = dob.split("-");
-      const y = Number(yStr), m = Number(mStr), d = Number(dStr);
-      const parsed = new Date(Date.UTC(y, m - 1, d));
-      if (
-        isNaN(parsed.getTime()) ||
-        parsed.getUTCFullYear() !== y ||
-        parsed.getUTCMonth() !== m - 1 ||
-        parsed.getUTCDate() !== d
-      ) {
-        return res.status(400).json({ message: "Invalid date of birth" });
-      }
-      const ageYears = (Date.now() - parsed.getTime()) / (365.25 * 24 * 3600 * 1000);
-      if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
-      if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
-      dobToStore = dob;
-    }
+    const requiredBirthdayError = birthdayError(dateOfBirth);
+    if (requiredBirthdayError) return res.status(400).json({ message: requiredBirthdayError, code: "DOB_REQUIRED" });
+    const dobToStore = dateOfBirth as string;
     // Per-IP registration rate limit — independent of login-failure tracking.
     const regRl = checkRateLimit(`reg:${clientIp}`, 5, 15 * 60 * 1000);
     if (!regRl.allowed) {
@@ -11399,37 +11382,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       updates.phone = trimmed;
     }
     if (dateOfBirth !== undefined) {
-      // Allow explicit clear via null or empty string. Otherwise require an
-      // ISO YYYY-MM-DD that parses to a real, past date and isn't ridiculous
-      // (>120 years old or in the future). We keep the year so birthdays in
-      // leap years (Feb 29) can be surfaced predictably each year.
-      if (dateOfBirth === null || dateOfBirth === "") {
-        updates.dateOfBirth = null;
-      } else {
-        const dob = String(dateOfBirth).trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-          return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
-        }
-        // Strictly validate the calendar date — JS Date silently normalizes
-        // invalid inputs (e.g. 2024-02-31 → Mar 2). We must reject those so
-        // bad birthdays can't leak into the bonus-window logic downstream.
-        const [yStr, mStr, dStr] = dob.split("-");
-        const y = Number(yStr), m = Number(mStr), d = Number(dStr);
-        const parsed = new Date(Date.UTC(y, m - 1, d));
-        if (
-          isNaN(parsed.getTime()) ||
-          parsed.getUTCFullYear() !== y ||
-          parsed.getUTCMonth() !== m - 1 ||
-          parsed.getUTCDate() !== d
-        ) {
-          return res.status(400).json({ message: "Invalid date of birth" });
-        }
-        const now = new Date();
-        const ageYears = (now.getTime() - parsed.getTime()) / (365.25 * 24 * 3600 * 1000);
-        if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
-        if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
-        updates.dateOfBirth = dob;
-      }
+      const error = birthdayError(dateOfBirth);
+      if (error) return res.status(400).json({ message: error, code: "DOB_REQUIRED" });
+      updates.dateOfBirth = dateOfBirth;
     }
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
@@ -11451,6 +11406,22 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const prev = await storage.getCustomerById(customerId);
       if (prev && prev.dateOfBirth !== updates.dateOfBirth && prev.lastBirthdayBonusYear != null) {
         await storage.setLastBirthdayBonusYear(customerId, 0);
+      }
+    }
+    // Synchronise before acknowledging the change. A Square failure is explicit
+    // and leaves the local birthday unchanged, so the customer can retry.
+    if (updates.dateOfBirth) {
+      const owner = await storage.getCustomerById(customerId);
+      if (owner?.emailVerified && square.isConfigured()) {
+        try {
+          const squareId = owner.squareCustomerId || (await square.findSquareCustomerByEmail(owner.email))?.id;
+          if (squareId) {
+            await square.updateSquareCustomerBirthday(squareId, updates.dateOfBirth);
+            if (!owner.squareCustomerId) await storage.setSquareCustomerId(customerId, squareId);
+          }
+        } catch {
+          return res.status(502).json({ message: "We couldn't sync your birthday with Square. Your change has not been saved. Please retry or contact staff.", code: "BIRTHDAY_SYNC_FAILED" });
+        }
       }
     }
     const updated = await storage.updateCustomer(customerId, updates);
@@ -12318,7 +12289,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             // Create or find Square customer
             let sqCustomer = await square.findSquareCustomerByEmail(customer.email);
             if (!sqCustomer) {
-              sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
+              sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined, customer.dateOfBirth).catch(() => null);
             }
 
             if (!sqCustomer) {
@@ -12460,7 +12431,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // 1) Find or create the Square customer record
       let sqCustomer = await square.findSquareCustomerByEmail(customer.email);
       if (!sqCustomer) {
-        sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
+        sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined, customer.dateOfBirth).catch(() => null);
       }
       if (!sqCustomer) return res.status(502).json({ message: "Could not create payment customer profile" });
 

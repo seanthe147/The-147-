@@ -5,6 +5,18 @@ description: Business scope for shared app and Wix membership management through
 
 Membership billing must be one central system customers can access from The 147 app and the Wix website, with Square processing payments. Customers must be able to choose monthly or annual billing and upgrade plans. Selected plans require a 12-month minimum subscription term.
 
+Date of birth is compulsory for customer signup and membership purchase, but under-18s may join. Sync customer-provided birthdays to Square.
+
+**Why:** The owner explicitly chose mandatory birthdays without an 18+ membership restriction. This is not proof of age or a replacement for alcohol ID checks.
+
+**How to apply:** Collect a full valid birthday, preserve UK display formatting, and do not introduce a minimum membership age.
+
+Staff need a customer-named email when a new membership plan is purchased. Treat confirmed paid plan changes as new purchases, but not routine recurring payments.
+
+**Why:** The owner requested new-plan purchase notifications; checkout attempts and ordinary renewals would create misleading or excessive alerts.
+
+**How to apply:** Notify only from verified payment evidence, separately from granting membership access. Email delivery failure must not remove paid benefits.
+
 Staff customer accounts should provide linked booking and order history, membership types, and upgrade/downgrade management. Only managers or owners may downgrade Platinum memberships.
 
 **Why:** the owner explicitly requested unified customer records and this Platinum-specific role restriction.

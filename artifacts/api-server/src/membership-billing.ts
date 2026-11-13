@@ -7,6 +7,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
 import { db, storage } from "./storage";
 import * as square from "./square";
+import { birthdayError } from "./customer-birthday";
 import {
   BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
   addCalendarMonths, billingPeriodEnd, squareCadenceForPlan, validDate, variationForFrequency, membershipBusinessDate,
@@ -128,7 +129,13 @@ export const membershipSignupGuard: RequestHandler = async (req, res, next) => {
         return;
       }
       if (customer?.emailVerified) {
+        const error = birthdayError(customer.dateOfBirth);
+        if (error) {
+          res.status(400).json({ message: "Add your date of birth in My Account before buying a membership.", code: "DOB_REQUIRED" });
+          return;
+        }
         const squareCustomer = await square.findSquareCustomerByEmail(customer.email);
+        if (squareCustomer) await square.updateSquareCustomerBirthday(squareCustomer.id, customer.dateOfBirth!);
         if (squareCustomer) {
           const owned = await square.listSquareSubscriptionsForCustomer(squareCustomer.id);
           const plans = await storage.getMembershipPlans();

@@ -369,6 +369,13 @@ export default function MembershipScreen() {
   };
 
   const handleJoin = () => {
+    if (!customer?.dateOfBirth) {
+      Alert.alert("Date of birth required", "Please add your date of birth in My Account before buying a membership.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "My Account", onPress: () => router.push("/account") },
+      ]);
+      return;
+    }
     if (!selectedPlanId || !selectedPlan) return;
     if (!termsAccepted) {
       Alert.alert("Terms required", "Please tick the box to confirm you agree to the Terms & Conditions before joining.");

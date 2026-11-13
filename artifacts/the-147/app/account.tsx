@@ -138,7 +138,7 @@ function DOBPicker({ value, onChange, testID }: {
       >
         <Ionicons name="calendar-outline" size={18} color={colors.tint} />
         <Text style={[styles.dobPickerText, !value && styles.dobPickerPlaceholder]}>
-          {value || "Select your date of birth"}
+          {value ? value.split("-").reverse().join("/") : "Select your date of birth"}
         </Text>
         {value ? (
           <Pressable
@@ -546,6 +546,10 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   };
 
   const handleRegister = async () => {
+    if (!regDob.trim()) {
+      setError("Please enter your date of birth.");
+      return;
+    }
     if (!name.trim() || !email.trim() || !password) {
       setError("Please fill in all required fields");
       return;
@@ -666,9 +670,9 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
             keyboardType="phone-pad"
             testID="register-phone"
           />
-          <Text style={[styles.inputLabel, authTheme.label]}>Date of Birth</Text>
+          <Text style={[styles.inputLabel, authTheme.label]}>Date of Birth (required)</Text>
           <DOBPicker value={regDob} onChange={setRegDob} testID="register-dob" />
-          <Text style={[styles.dobHint, authTheme.secondaryText]}>Optional — add your birthday to unlock a free reward in your birthday week.</Text>
+          <Text style={[styles.dobHint, authTheme.secondaryText]}>Required for your customer record and shared with Square. Under-18s can join; ID checks still apply to alcohol purchases.</Text>
         </>
       )}
 
@@ -995,6 +999,12 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
 
   const handleSaveProfile = async () => {
     const dobTrimmed = editDob.trim();
+    if (!dobTrimmed) {
+      const message = "Date of birth is required.";
+      if (Platform.OS === "web") window.alert(message);
+      else Alert.alert("Date of birth required", message);
+      return;
+    }
     if (dobTrimmed && !/^\d{4}-\d{2}-\d{2}$/.test(dobTrimmed)) {
       const msg = "Date of birth must be in YYYY-MM-DD format";
       if (Platform.OS === "web") window.alert(msg);
@@ -1067,7 +1077,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                   keyboardType="phone-pad"
                 />
                 <DOBPicker value={editDob} onChange={setEditDob} testID="profile-dob-input" />
-                <Text style={styles.dobHint}>Add your birthday to unlock a free reward in your birthday week.</Text>
+                <Text style={styles.dobHint}>Date of birth is required and shared with your linked Square customer record.</Text>
                 <View style={styles.editActions}>
                   <Pressable
                     onPress={handleSaveProfile}

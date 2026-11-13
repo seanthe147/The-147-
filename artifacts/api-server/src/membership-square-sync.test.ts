@@ -10,7 +10,8 @@ import { registerMembershipBilling, billingState, membershipSignupGuard, syncSqu
 import { claimPrepaidPurchases, membershipDay, prepaidCoverage, processMembershipPosPayment,
   processSquareMembershipEvent, reconcileMembershipExpiry, refreshExternalSquareMembership, registerSquareMembershipSync, validatePosMapping } from "./membership-square-sync";
 import { addCalendarMonths } from "./membership-billing-policy";
-import { findSquareCustomerByEmail, snookerDiscountCustomerGroupName } from "./square";
+import { findSquareCustomerByEmail, snookerDiscountCustomerGroupName, createSquareCustomer, updateSquareCustomerBirthday } from "./square";
+import { deliverMembershipSaleEmails } from "./membership-sale-notifications";
 
 if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes" || process.env.SQUARE_ACCESS_TOKEN !== "fixture-square-token")
   throw new Error("Use the isolated membership test runner.");
@@ -28,7 +29,7 @@ async function customer(suffix: string, verified = true) {
   const c = await storage.createCustomer(`${tag}-${suffix}@example.invalid`, "Isolated membership test", null, "!fixture");
   customerIds.push(c.id);
   const squareId = tag + "-" + suffix;
-  await db.update(customers).set({ emailVerified: verified, squareCustomerId: squareId }).where(eq(customers.id, c.id));
+  await db.update(customers).set({ emailVerified: verified, squareCustomerId: squareId, dateOfBirth: "2000-01-01" }).where(eq(customers.id, c.id));
   groups.set(squareId, new Set([tag + "-vip-group"]));
   directory.set(c.email, [{ id: squareId, email_address: c.email }]);
   return { ...c, emailVerified: verified, squareCustomerId: squareId };
@@ -96,6 +97,8 @@ before(async () => {
     calls.push({ path, method, body });
     if (path === "/v2/subscriptions/search") return Response.json({ subscriptions: [...remotes.values()].filter(r => body.query.filter.customer_ids.includes(r.customer_id)) });
     if (path === "/v2/customers/search") return Response.json({ customers: directory.get(body.query.filter.email_address.exact) ?? [] });
+    if (path === "/v2/customers" && method === "POST") return Response.json({ customer: { id: "fixture-birthday-customer", ...body } });
+    if (/^\/v2\/customers\/[^/]+$/.test(path) && method === "PUT") return Response.json({ customer: { id: path.split("/").pop(), ...body } });
     if (path === "/v2/customers/groups") return Response.json({ groups: [
       ...[standard, platinum, vip, blue, pink].map(p => ({ id: p.squareCustomerGroupId, name: p.name })),
       { id: tag + "-blue-snooker-group", name: snookerDiscountCustomerGroupName("blue") },
@@ -108,7 +111,7 @@ before(async () => {
       if (method === "PUT") set.add(groupMatch[2]); else set.delete(groupMatch[2]);
       return Response.json({});
     }
-    if (path.startsWith("/v2/customers/")) return Response.json({ customer: { id: path.split("/").at(-1), group_ids: [...group(path.split("/").at(-1)!)] } });
+    if (path.startsWith("/v2/customers/")) return Response.json({ customer: { id: path.split("/").at(-1), given_name: "Square", family_name: "Fixture", group_ids: [...group(path.split("/").at(-1)!)] } });
     if (path.startsWith("/v2/catalog/object/")) {
       const annual = path.endsWith("-annual");
       const p = path.includes("Platinum") ? platinum : standard;
@@ -150,6 +153,7 @@ before(async () => {
 after(async () => {
   globalThis.fetch = originalFetch;
   if (server) await new Promise<void>(resolve => server.close(resolve));
+  await db.delete(audit).where(sql`${audit.note} LIKE ${"%" + tag + "%"}`);
   await db.delete(purchases).where(sql`${purchases.id} LIKE ${"%" + tag + "%"}`);
   await db.delete(events).where(sql`${events.id} LIKE ${"%" + tag + "%"}`);
   if (customerIds.length) {
@@ -170,6 +174,49 @@ after(async () => {
   }
   if (planIds.length) await db.delete(membershipPlans).where(inArray(membershipPlans.id, planIds));
   assert.equal(calls.some(c => c.path === "/v2/payments" && c.method !== "GET"), false, "No real or simulated immediate charges should be created");
+});
+
+test("Square birthday creation and updates use the standard birthday field without altering groups", async () => {
+  const created = await createSquareCustomer("Birthday Fixture", "birthday@example.invalid", undefined, "2015-06-10");
+  assert.equal(created.birthday, "2015-06-10");
+  await updateSquareCustomerBirthday(created.id, "2014-02-28");
+  const last = calls.at(-1)!;
+  assert.equal(last.method, "PUT");
+  assert.equal(last.path, "/v2/customers/fixture-birthday-customer");
+  assert.deepEqual(last.body, { birthday: "2014-02-28" });
+});
+
+test("new paid plans email staff once, retry failures, escape names and exclude routine renewals", async () => {
+  const c = await customer("sale-email");
+  await storage.updateCustomer(c.id, { name: "Dana <Test> & Co" });
+  const r = remote(c);
+  const local = await storage.createMembershipSubscription({
+    customerId: c.id, planId: standard.id, status: "pending",
+    squareCustomerId: c.squareCustomerId, squareSubscriptionId: r.id,
+    currentPeriodStart: day, currentPeriodEnd: r.charged_through_date, source: "app",
+  });
+  const i = invoice(r, "sale-email");
+  await processSquareMembershipEvent(paidEvent(i));
+  await processSquareMembershipEvent(paidEvent(i));
+  const notices = () => db.select().from(audit).where(andForNotice(local.id));
+  function andForNotice(id: number) {
+    return sql`${audit.subscriptionId} = ${id} AND ${audit.action} LIKE 'membership_sale_email_%'`;
+  }
+  assert.equal((await notices()).length, 1);
+  await deliverMembershipSaleEmails(async () => false);
+  assert.equal((await notices())[0].action, "membership_sale_email_pending");
+  const delivered: { to: string; html: string }[] = [];
+  const sender = async (to: string, _subject: string, html: string) => { delivered.push({ to, html }); return true; };
+  await Promise.all([deliverMembershipSaleEmails(sender), deliverMembershipSaleEmails(sender)]);
+  assert.equal(delivered.filter(d => d.html.includes("Dana &lt;Test&gt; &amp; Co")).length, 1);
+  assert.ok(delivered.every(d => d.to === "info@the147.co.uk"));
+  assert.equal((await notices())[0].action, "membership_sale_email_sent");
+  r.charged_through_date = addCalendarMonths(day, 2);
+  const renewal = invoice(r, "sale-email-renewal");
+  await processSquareMembershipEvent(paidEvent(renewal));
+  assert.equal((await notices()).length, 1);
+  await deliverMembershipSaleEmails(sender);
+  assert.equal(delivered.filter(d => d.html.includes("Dana &lt;Test&gt; &amp; Co")).length, 1);
 });
 
 test("prepaid periods preserve calendar dates and historical import order", () => {

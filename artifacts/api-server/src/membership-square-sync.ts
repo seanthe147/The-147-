@@ -9,6 +9,7 @@ import * as square from "./square";
 import { addCalendarMonths, validDate, membershipBusinessDate, isPaidMembershipPlan } from "./membership-billing-policy";
 import { alignBillingStart, billingState, reconcileScheduledMembership, syncPaidMembershipGroups, syncSquareMembershipGroupsForCustomer } from "./membership-billing";
 import type { Express, RequestHandler } from "express";
+import { queueMembershipSaleEmail, deliverMembershipSaleEmails } from "./membership-sale-notifications";
 
 export const membershipDay = membershipBusinessDate;
 const later = (...dates: (string | null | undefined)[]) => dates.filter((d): d is string => validDate(d)).sort().at(-1);
@@ -164,6 +165,8 @@ export async function processSquareMembershipEvent(event: any,
     }).where(eq(subs.id, fresh.id));
     await tx.update(purchases).set({ subscriptionId: fresh.id, customerId: fresh.customerId, status: "applied" })
       .where(eq(purchases.id, key));
+    if (firstActivation || local.planId !== match.plan.id)
+      await queueMembershipSaleEmail(tx, key, fresh.id, fresh.customerId);
     await tx.insert(states).values({ subscriptionId: fresh.id, billingFrequency: match.frequency })
       .onConflictDoUpdate({ target: states.subscriptionId, set: { billingFrequency: match.frequency } });
     // Paid direct Square plan changes are reflected, without inventing new
@@ -193,14 +196,21 @@ async function processUnlinkedInvoice(event: any, incoming: any, remote: any, fa
     if (invoice.status !== "PAID" || !validDate(remote.charged_through_date)) return;
     const paidAt = invoicePaidAt(invoice, event);
     await db.transaction(async tx => {
-      await tx.insert(purchases).values({
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(14709, hashtext(${remote.id}))`);
+      const previous = await tx.select().from(purchases).where(and(
+        eq(purchases.squareSubscriptionId, remote.id), eq(purchases.source, "square_subscription")));
+      const latest = previous.sort((a, b) => (b.periodEnd ?? "").localeCompare(a.periodEnd ?? ""))[0];
+      const inserted = await tx.insert(purchases).values({
         id: "invoice:" + invoice.id, squareCustomerId: remote.customer_id, squareSubscriptionId: remote.id,
         planId: match.plan.id, source: "square_subscription", frequency: match.frequency,
         months: match.frequency === "annual" ? 12 : 1,
         amountPence: Number(invoice.payment_requests?.[0]?.computed_amount_money?.amount ?? 0),
         purchasedAt: paidAt, periodStart: paidAt ? membershipDay(paidAt) : null,
         periodEnd: remote.charged_through_date, status: remote.charged_through_date > membershipDay() ? "unclaimed" : "expired",
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning();
+      if (inserted.length && remote.charged_through_date > membershipDay() &&
+          (!latest || (latest.planId !== match.plan.id && remote.charged_through_date >= (latest.periodEnd ?? ""))))
+        await queueMembershipSaleEmail(tx, "invoice:" + invoice.id);
       if (remote.charged_through_date > membershipDay()) await tx.update(purchases).set({ status: "resolved" })
         .where(and(eq(purchases.squareSubscriptionId, remote.id), eq(purchases.source, "square_failure")));
     });
@@ -374,13 +384,15 @@ export async function processMembershipPosPayment(payment: any) {
   const overlap = await hasLiveSquareMembership(customerId);
   await db.transaction(async tx => {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${customerId}))`);
-  await tx.insert(purchases).values({
+  const inserted = await tx.insert(purchases).values({
     id: "pos-order:" + order.id, squareCustomerId: customerId, squarePaymentId: payment.id,
     squareOrderId: order.id, planId: lines[0].plan.id, source: "square_pos",
     frequency: "annual", amountPence: amount, purchasedAt: bought, months: quantity * 12,
     status: overlap ? "needs_review" : "unclaimed",
     reviewReason: overlap ? "Automatic Square membership billing already exists. Review it before adding prepaid time." : null,
-  }).onConflictDoNothing();
+  }).onConflictDoNothing().returning();
+  if (inserted.length && addCalendarMonths(membershipDay(bought), quantity * 12) > membershipDay())
+    await queueMembershipSaleEmail(tx, "pos-order:" + order.id);
   const rows = await tx.select().from(purchases).where(and(eq(purchases.squareCustomerId, customerId),
     eq(purchases.source, "square_pos"), inArray(purchases.status, ["unclaimed", "applied"])));
   for (const row of prepaidCoverage(rows)) await tx.update(purchases).set({
@@ -610,7 +622,11 @@ export function registerSquareMembershipSync(app: Express, staffAuth: RequestHan
       running = true;
       try { await reconcileMembershipExpiry(); }
       catch { console.warn("[MEMBERSHIP] Expiry reconciliation will retry."); }
-      finally { running = false; }
+      finally {
+        try { await deliverMembershipSaleEmails(); }
+        catch { console.warn("[MEMBERSHIP] Purchase email queue will retry."); }
+        running = false;
+      }
     };
     setTimeout(() => { void run(); }, 30_000).unref();
     setInterval(() => { void run(); }, 5 * 60_000).unref();
