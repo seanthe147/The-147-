@@ -1,3 +1,8 @@
+# Customer website embeds
+
+See [Wix customer widget setup and verification](wix-customer-widgets.md) for
+iframe routes, mobile dimensions, checkout fallbacks, privacy and test commands.
+
 # Shared Square membership billing
 
 ## Why this approach

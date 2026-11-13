@@ -357,6 +357,17 @@
     .booking-ref-num { font-size: 20px; font-weight: 700; color: var(--blue); }
 
     .hide { display: none !important; }
+    button { font: inherit; }
+    :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+    .date-navigation { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; align-items:center; }
+    .date-navigation input { min-width:0; flex:1; padding:10px; font:inherit; border:1px solid var(--border); border-radius:4px; }
+    .date-navigation button { min-height:44px; padding:8px; background:white; border:1px solid var(--border); border-radius:4px; cursor:pointer; }
+    #selectionSummary { font-size:13px; line-height:1.6; padding:12px; background:#eef3ff; margin-bottom:16px; overflow-wrap:anywhere; }
+    .btn-row .btn { padding:14px 10px; margin-top:0; }
+    .summary-value { overflow-wrap:anywhere; min-width:0; }
+    .summary-row { gap:12px; }
+    .field input, .field textarea { font-size:16px; }
+    .card, .btn, .table-card, .num-btn, .dur-btn, .time-btn { border-radius:4px; }
 
     @media (max-width: 380px) {
       .table-grid { grid-template-columns: 1fr 1fr; }
@@ -400,6 +411,7 @@
   </div>
 
   <!-- STEP 1: Table type -->
+  <div id="selectionSummary" class="hide" aria-live="polite"></div>
   <div id="step1">
     <div class="card">
       <div class="card-title">Choose a Table</div>
@@ -456,7 +468,14 @@
   <div id="step2" class="hide">
     <div class="card">
       <div class="card-title">Select a Date</div>
-      <div class="date-scroll" id="dateScroll"></div>
+      <div class="date-navigation">
+        <button type="button" id="previousDate" onclick="moveDate(-1)" aria-label="Previous day">←</button>
+        <label for="bookingDate">Date</label>
+        <input type="date" id="bookingDate" onchange="chooseDate(this.value)" />
+        <button type="button" id="nextDate" onclick="moveDate(1)" aria-label="Next day">→</button>
+        <button type="button" onclick="chooseDate(localDateStr(getBookingDays()[0]))">Today</button>
+      </div>
+      <p class="card-sub" id="dateDescription"></p>
 
       <div id="durationSection">
         <div class="card-title" style="margin-bottom:12px">Duration</div>
@@ -598,14 +617,16 @@
       <div class="deposit-amount">£5.00</div>
       <button class="btn-pay" id="depositPayBtn" onclick="openDepositPayment()">Pay £5.00 Deposit →</button>
       <div id="depositPaidSection" style="display:none;margin-top:12px;text-align:center">
-        <p style="color:#16A34A;font-size:14px;font-weight:600;margin-bottom:8px">✓ Payment completed? Click below to confirm your booking.</p>
-        <button class="btn btn-navy" onclick="completeDepositBooking()" style="width:100%;font-size:15px;padding:14px">My Booking is Confirmed ✓</button>
+        <p style="font-size:14px;margin-bottom:8px">Payment is pending until Square confirms it to the club. Opening or returning from checkout does not confirm payment. We will email you when confirmed.</p>
+        <a id="depositFallback" target="_blank" rel="noopener noreferrer">Open secure Square checkout in a new tab</a>
+        <button class="btn btn-navy" onclick="completeDepositBooking()" style="width:100%;font-size:15px;padding:14px;margin-top:12px">Continue with payment pending</button>
       </div>
       <div class="booking-ref" style="margin-bottom:16px;margin-top:16px">
         <div class="booking-ref-label">Booking Reference</div>
         <div class="booking-ref-num" id="depositRef">#000</div>
       </div>
-      <button class="btn btn-outline" onclick="resetWidget()" style="width:100%;margin-top:4px">Cancel Booking</button>
+      <p class="card-sub">Unpaid reservations expire after one hour. Contact the club if you need to cancel.</p>
+      <button class="btn btn-outline" onclick="resetWidget()" style="width:100%;margin-top:4px">Start another booking</button>
     </div>
   </div>
 
@@ -623,13 +644,14 @@
         <div class="booking-ref-num" id="successRef">#000</div>
       </div>
       <button class="btn btn-primary" onclick="resetWidget()">Make Another Booking</button>
+      <a id="pendingDepositLink" class="btn btn-outline hide" target="_blank" rel="noopener noreferrer">Pay pending deposit securely in a new tab</a>
     </div>
   </div>
 
 </div>
 
 <script>
-  const API_BASE = 'https://the147bradford.replit.app';
+  const API_BASE = window.location.origin;
   const TABLE_HOURS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
   const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining', darts: 'Darts', shuffleboard: 'Shuffleboard' };
   // Pool is charged by games played, not by the booked table duration.
@@ -663,6 +685,28 @@
   }
 
   let state = freshState();
+  let availabilityRequest = 0, availabilityController = null;
+  let verifiedKey = '', verifiedAt = 0, submitting = false;
+  const availabilityKey = () => JSON.stringify([state.tableType,state.tableNumber,state.guestCount,state.date,state.duration]);
+  const availabilityCurrent = () => verifiedKey === availabilityKey() && Date.now() - verifiedAt < 60000;
+  function invalidateAvailability() {
+    availabilityRequest++;
+    if (availabilityController) availabilityController.abort();
+    verifiedKey = ''; verifiedAt = 0;
+    document.getElementById('step2Next').disabled = true;
+  }
+  function updateSelectionSummary() {
+    const el = document.getElementById('selectionSummary');
+    el.classList.toggle('hide', !state.tableType);
+    el.textContent = [TABLE_NAMES[state.tableType], state.tableNumber ? 'Table '+state.tableNumber : '',
+      state.guestCount ? state.guestCount+' guests' : '',
+      state.date ? new Date(state.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '',
+      state.time ? displayTime(state.time) : '', state.duration+' hour'+(state.duration===1?'':'s')].filter(Boolean).join(' · ');
+  }
+  function displayTime(t) {
+    const [h,m] = t.split(':').map(Number);
+    return `${h%12 || 12}:${String(m).padStart(2,'0')}${h<12?'am':'pm'}`;
+  }
 
   function freshState() {
     return {
@@ -682,6 +726,10 @@
     });
     document.getElementById('stepDeposit').classList.add('hide');
     updateStepIndicator(n);
+    updateSelectionSummary();
+    if (n === 2) { buildDateScroll(); loadAvailability(); }
+    const heading = document.querySelector('#step'+n+' .card-title, #step'+n+' .success-title');
+    if (heading) { heading.tabIndex = -1; heading.focus(); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -691,18 +739,15 @@
     document.getElementById('stepDeposit').classList.remove('hide');
     document.getElementById('depositRef').textContent = '#' + String(bookingId).padStart(4, '0');
     document.getElementById('depositGuestCount').textContent = guestCount;
-    document.getElementById('depositPaidSection').style.display = 'none';
+    document.getElementById('depositPaidSection').style.display = '';
+    document.getElementById('depositFallback').href = paymentUrl;
     updateStepIndicator(4);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function openDepositPayment() {
     if (depositPaymentUrl) {
-      window.open(depositPaymentUrl, '_blank');
-      // After opening Square payment, show the "I've paid" confirmation section
-      setTimeout(() => {
-        document.getElementById('depositPaidSection').style.display = '';
-      }, 1500);
+      window.open(depositPaymentUrl, '_blank', 'noopener,noreferrer');
     }
   }
 
@@ -712,6 +757,9 @@
     document.getElementById('successRef').textContent = document.getElementById('depositRef').textContent;
     document.getElementById('successMessage').textContent =
       'Your booking has been submitted. Once your £5.00 deposit payment is confirmed, your dining reservation will be fully confirmed. You should receive a confirmation email shortly.';
+    const link = document.getElementById('pendingDepositLink');
+    link.href = depositPaymentUrl;
+    link.classList.remove('hide');
     goToStep(5);
   }
 
@@ -738,6 +786,8 @@
 
   // ── Step 1 ──────────────────────────────────────────────────────────────────
   function selectTableType(el) {
+    if (state.tableType === el.dataset.type) return;
+    invalidateAvailability();
     document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
     el.classList.add('selected');
     state.tableType = el.dataset.type;
@@ -820,7 +870,8 @@
   }
 
   function goToStep2() {
-    buildDateScroll();
+    if (!state.tableType || (['pool','snooker'].includes(state.tableType) && !state.tableNumber) ||
+      (state.tableType === 'dining' && !state.guestCount)) return;
     goToStep(2);
   }
 
@@ -835,7 +886,7 @@
   // ── Step 2 ──────────────────────────────────────────────────────────────────
   function getBookingDays() {
     const days = [];
-    const today = new Date();
+    const today = new Date(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())+'T12:00:00');
     for (let i = 0; i < 182; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
@@ -845,27 +896,25 @@
   }
 
   function buildDateScroll() {
-    const scroll = document.getElementById('dateScroll');
-    scroll.innerHTML = '';
-    getBookingDays().forEach((d) => {
-      const btn = document.createElement('div');
-      btn.className = 'date-btn';
-      const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
-      const num = d.getDate();
-      const mon = d.toLocaleDateString('en-GB', { month: 'short' });
-      btn.innerHTML = `<div class="date-day">${day}</div><div class="date-num">${num}</div><div class="date-mon">${mon}</div>`;
-      btn.dataset.date = localDateStr(d);
-      btn.onclick = () => selectDate(btn, localDateStr(d));
-      scroll.appendChild(btn);
-    });
+    const days = getBookingDays(), input = document.getElementById('bookingDate');
+    input.min = localDateStr(days[0]); input.max = localDateStr(days[days.length-1]);
+    if (!state.date || state.date < input.min || state.date > input.max) state.date = input.min;
+    input.value = state.date;
+    document.getElementById('previousDate').disabled = state.date <= input.min;
+    document.getElementById('nextDate').disabled = state.date >= input.max;
+    document.getElementById('dateDescription').textContent = new Date(state.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    updatePriceEstimate();
   }
-
-  function selectDate(el, dateStr) {
-    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('selected'));
-    el.classList.add('selected');
+  function moveDate(offset) {
+    const d = new Date(state.date+'T12:00:00'); d.setDate(d.getDate()+offset); chooseDate(localDateStr(d));
+  }
+  function chooseDate(dateStr) {
+    const input = document.getElementById('bookingDate');
+    if (!dateStr || dateStr < input.min || dateStr > input.max) { input.value=state.date; return; }
     state.date = dateStr;
     state.time = null;
-    document.getElementById('step2Next').disabled = true;
+    buildDateScroll();
+    updateSelectionSummary();
     loadAvailability();
   }
 
@@ -877,12 +926,16 @@
     if (state.date) {
       state.time = null;
       document.getElementById('step2Next').disabled = true;
-      renderTimeSlots();
+      loadAvailability();
     }
   }
 
   async function loadAvailability() {
     if (!state.date) return;
+    invalidateAvailability();
+    const request = availabilityRequest, key = availabilityKey();
+    const controller = availabilityController = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const container = document.getElementById('timeContainer');
     container.innerHTML = '<div class="avail-loading"><span class="spinner-sm"></span>Checking availability…</div>';
     state.bookedSlots = [];
@@ -893,32 +946,34 @@
       let url = `${API_BASE}/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
       if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
       const [availRes, blocksRes, diningRes] = await Promise.all([
-        fetch(url),
-        fetch(`${API_BASE}/api/blocked-periods`),
-        fetch(`${API_BASE}/api/dining-hours`),
+        fetch(url,{signal:controller.signal,cache:'no-store'}),
+        fetch(`${API_BASE}/api/blocked-periods`,{signal:controller.signal,cache:'no-store'}),
+        fetch(`${API_BASE}/api/dining-hours`,{signal:controller.signal,cache:'no-store'}),
       ]);
-      if (availRes.ok) {
-        const data = await availRes.json();
-        if (data && data.totalTables) {
-          state.bookedSlots = data.slots || [];
-          state.totalTables = data.totalTables;
-        } else {
-          state.bookedSlots = Array.isArray(data) ? data : [];
-          state.totalTables = 1;
-        }
-      }
-      if (blocksRes.ok) {
-        state.blockedPeriodsList = await blocksRes.json();
-      }
-      if (diningRes.ok) {
-        const dh = await diningRes.json();
-        state.diningOverrides = (dh && Array.isArray(dh.overrides)) ? dh.overrides : [];
-      }
+      if (![availRes,blocksRes,diningRes].every(r=>r.ok)) throw new Error('Availability unavailable');
+      const [data, blocks, dh] = await Promise.all([availRes.json(),blocksRes.json(),diningRes.json()]);
+      if (request !== availabilityRequest || key !== availabilityKey()) return;
+      if (!(Array.isArray(data) || (data && Array.isArray(data.slots) && Number.isFinite(data.totalTables) && data.totalTables>0)) ||
+          !Array.isArray(blocks) || !dh || !Array.isArray(dh.overrides)) throw new Error('Invalid availability');
+      const slots = Array.isArray(data) ? data : data.slots;
+      const validTime = t => typeof t === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(t);
+      if (!slots.every(s=>s && validTime(s.startTime) && Number.isFinite(s.duration) && s.duration>0) ||
+          !blocks.every(b=>b && typeof b==='object' && (!b.startTime || validTime(b.startTime)) && (!b.endTime || validTime(b.endTime))) ||
+          !dh.overrides.every(o=>o && typeof o.date==='string')) throw new Error('Invalid availability');
+      state.bookedSlots = Array.isArray(data) ? data : data.slots;
+      state.totalTables = Array.isArray(data) ? 1 : data.totalTables;
+      state.blockedPeriodsList = blocks;
+      state.diningOverrides = dh.overrides;
+      verifiedKey = key; verifiedAt = Date.now();
+      renderTimeSlots();
     } catch(e) {
-      console.error('Availability fetch failed:', e);
+      if (request !== availabilityRequest || key !== availabilityKey()) return;
+      state.time = null;
+      verifiedKey = '';
+      container.innerHTML = '<div class="avail-loading" role="alert">We could not verify availability. Your contact details are retained. Please retry.</div><button class="btn btn-outline" onclick="loadAvailability()">Retry availability</button>';
+    } finally {
+      clearTimeout(timeout);
     }
-
-    renderTimeSlots();
   }
 
   function isSlotBlockedByManager(time) {
@@ -959,14 +1014,16 @@
   }
 
   function renderTimeSlots() {
+    if (!availabilityCurrent()) return;
     const container = document.getElementById('timeContainer');
     const grid = document.createElement('div');
     grid.className = 'time-grid';
 
-    const todayStr = localDateStr(new Date());
+    const todayStr = localDateStr(getBookingDays()[0]);
     const isToday = state.date === todayStr;
     const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const londonTime = new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);
+    const nowMins = toMins(londonTime);
     const selectedDow = new Date(state.date + 'T00:00:00').getDay(); // 0=Sun...6=Sat
 
     // Effective dining window: staff per-date override wins, else Wed–Sun 12:00–20:00
@@ -979,6 +1036,8 @@
     }
 
     if (state.tableType === 'dining' && !diningWindow) {
+      state.time = null;
+      document.getElementById('step2Next').disabled = true;
       container.innerHTML = diningOverride
         ? '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is closed on this date. Please choose a different date.</div>'
         : '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is only available Wednesday to Sunday. Please choose a different date.</div>';
@@ -1006,9 +1065,10 @@
 
       // Manager-blocked periods
       if (isSlotBlockedByManager(t)) {
-        const btn = document.createElement('div');
+        const btn = document.createElement('button');
+        btn.disabled = true;
         btn.className = 'time-btn unavailable';
-        btn.innerHTML = `${t}<br><span style="font-size:10px;opacity:0.75">Closed</span>`;
+        btn.innerHTML = `${displayTime(t)}<br><span style="font-size:10px;opacity:0.75">Closed</span>`;
         grid.appendChild(btn);
         return;
       }
@@ -1016,15 +1076,18 @@
       const booked = isSlotBooked(t, state.duration);
       if (!booked) anyAvail = true;
 
-      const btn = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.disabled = booked;
       btn.className = 'time-btn' + (booked ? ' unavailable' : '') + (state.time === t ? ' selected' : '');
-      btn.textContent = t;
+      btn.textContent = displayTime(t);
       if (!booked) {
         btn.onclick = () => {
+          if (!availabilityCurrent()) { loadAvailability(); return; }
           document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
           btn.classList.add('selected');
           state.time = t;
           document.getElementById('step2Next').disabled = false;
+          updateSelectionSummary();
         };
       }
       grid.appendChild(btn);
@@ -1044,9 +1107,15 @@
     } else {
       container.appendChild(grid);
     }
+    if (!grid.querySelector('.selected:not(:disabled)')) state.time = null;
+    document.getElementById('step2Next').disabled = !state.time;
+    updateSelectionSummary();
   }
 
-  function goToStep3() { goToStep(3); }
+  function goToStep3() {
+    if (!availabilityCurrent()) { loadAvailability(); return; }
+    if (state.time) goToStep(3);
+  }
 
   // ── Step 3 ──────────────────────────────────────────────────────────────────
   function goToStep4() {
@@ -1058,15 +1127,15 @@
 
     if (!name || !email || !phone) {
       errBox.textContent = 'Please fill in all required fields (name, email, phone).';
-      errBox.style.display = 'block'; return;
+      errBox.style.display = 'block'; document.getElementById(!name?'custName':!email?'custEmail':'custPhone').focus(); return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errBox.textContent = 'Please enter a valid email address.';
-      errBox.style.display = 'block'; return;
+      errBox.style.display = 'block'; document.getElementById('custEmail').focus(); return;
     }
     if (!gdpr) {
       errBox.textContent = 'You must consent to data processing to make a booking.';
-      errBox.style.display = 'block'; return;
+      errBox.style.display = 'block'; document.getElementById('gdprCheck').focus(); return;
     }
 
     errBox.style.display = 'none';
@@ -1092,7 +1161,7 @@
 
     const d = new Date(state.date + 'T00:00:00');
     document.getElementById('sumDate').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-    document.getElementById('sumTime').textContent = state.time;
+    document.getElementById('sumTime').textContent = displayTime(state.time);
     document.getElementById('sumDuration').textContent = state.duration + ' hour' + (state.duration > 1 ? 's' : '');
     const costRow = document.getElementById('sumCostRow');
     const priceInfo = getPriceInfo(state.tableType, state.duration);
@@ -1116,6 +1185,9 @@
   }
 
   async function submitBooking() {
+    if (submitting) return;
+    if (!availabilityCurrent() || !state.time) { goToStep(2); return; }
+    submitting = true;
     const btn = document.getElementById('confirmBtn');
     const errBox = document.getElementById('confirmError');
     btn.disabled = true;
@@ -1181,10 +1253,16 @@
       btn.disabled = false;
       const needsDeposit = state.tableType === 'dining' && state.guestCount >= DEPOSIT_THRESHOLD;
       btn.textContent = needsDeposit ? 'Confirm & Pay Deposit ✓' : 'Confirm Booking ✓';
+    } finally {
+      submitting = false;
+      btn.disabled = false;
     }
   }
 
   function resetWidget() {
+    invalidateAvailability();
+    document.getElementById('pendingDepositLink').classList.add('hide');
+    document.getElementById('pendingDepositLink').removeAttribute('href');
     state = freshState();
     depositPaymentUrl = null;
     document.getElementById('stepDeposit').classList.add('hide');
@@ -1194,6 +1272,7 @@
     document.getElementById('diningGuestCard').classList.add('hide');
     document.getElementById('step1Next').disabled = true;
     document.getElementById('step2Next').disabled = true;
+    document.getElementById('confirmBtn').disabled = false;
     document.getElementById('custName').value = '';
     document.getElementById('custEmail').value = '';
     document.getElementById('custPhone').value = '';
@@ -1204,6 +1283,27 @@
     document.querySelectorAll('.dur-btn').forEach((b, i) => b.classList.toggle('selected', i === 0));
     goToStep(1);
   }
+  // Keep selection styling while providing keyboard semantics.
+  function accessibleControls() {
+    document.querySelectorAll('div.table-card, div.num-btn, div.dur-btn').forEach(el => {
+      el.setAttribute('role','button'); el.tabIndex=0;
+      el.setAttribute('aria-pressed', String(el.classList.contains('selected')));
+      el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click();}};
+    });
+  }
+  document.querySelectorAll('.field').forEach(field=>{
+    const label=field.querySelector('label'), input=field.querySelector('input,textarea');
+    if(label&&input) label.htmlFor=input.id;
+  });
+  document.querySelectorAll('.error-box').forEach(el=>{el.setAttribute('role','alert');el.tabIndex=-1;});
+  new MutationObserver(accessibleControls).observe(document.querySelector('.widget'),{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  accessibleControls();
+  setInterval(()=>{
+    if(verifiedKey && !availabilityCurrent()){
+      invalidateAvailability();
+      if(!document.getElementById('step2').classList.contains('hide')) loadAvailability();
+    }
+  },10000);
 </script>
 </body>
 </html>

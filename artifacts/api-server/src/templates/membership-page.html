@@ -225,9 +225,38 @@
     #verifyBanner{position:relative;z-index:5;font-family:var(--font-body)!important;background:var(--blue-wash)!important;border-bottom:1px solid var(--blue-line)!important;color:var(--ink)!important;font-size:13.5px!important}
     #verifyResendBtn{background:var(--blue)!important;border-radius:var(--r)!important;min-height:40px;margin-top:4px}
 
+    /* ─── RETURNING MEMBER BAR ─── */
+    .member-strip.top{margin:0 0 14px;padding:14px 16px;gap:10px;border-left:6px solid var(--blue)}
+    .member-strip.top h3{font-size:15px}
+    .member-strip.top p{font-size:13px;margin-top:2px}
+    .member-strip.top button{min-height:44px;background:#fff;color:var(--ink);border-color:#fff}
+    .member-strip.top button:hover{background:var(--blue-wash)}
+
+    /* ─── CHECKOUT HAND-OFF ─── */
+    .pay-link{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;margin-top:6px;padding:12px 22px;background:var(--blue);color:#fff;border-radius:var(--r);font-weight:800;font-size:14px;letter-spacing:.04em;text-transform:uppercase;text-decoration:none}
+    .pay-link:hover{background:var(--blue-hi)}
+    .pay-fallback{margin-top:10px;font-size:12.5px;color:var(--text-2);line-height:1.5;word-break:break-all}
+    .pay-fallback a{font-weight:700}
+    .m-msg .pay-link{margin-top:10px}
+    .fld input[aria-invalid="true"]{border-color:var(--red)}
+
+    /* ─── EMBEDDED (iframe / widget) ─── */
+    .embedded .hero{padding:14px 16px 16px;background-image:none;background:var(--ink)}
+    .embedded .hero-kicker{margin-bottom:6px;padding:4px 8px;font-size:10px}
+    .embedded .hero-title{font-size:22px;max-width:none;margin-bottom:0;text-shadow:none}
+    .embedded .hero-sub{display:none}
+    .embedded .page-body{margin-top:14px;padding-bottom:24px}
+    .embedded .brandbar-inner{min-height:52px;padding-top:6px;padding-bottom:6px}
+    .embedded .brand-logo{height:32px}
+    .embedded .brand-tag{display:none}
+    .embedded .plan-side{margin-top:16px}
+    .embedded .perks-strip,.embedded .trust-bar,.embedded .page-foot{margin-top:14px}
+    @media(min-width:640px){.embedded .hero{padding:16px 28px}.embedded .page-body{padding-bottom:32px}}
+
     /* ─── RESPONSIVE ─── */
     @media(max-width:479px){.brand-tag{display:none}}
     @media(max-width:430px){.form-row{grid-template-columns:1fr;gap:0}}
+    @media(max-width:359px){.modal{max-height:100dvh}.modal-head{padding:16px 14px 14px}.modal-title{font-size:20px}.modal-body{padding:14px}.modal-footer{padding:0 14px 14px}.tab{font-size:12px;letter-spacing:.02em}.success-pane{padding:24px 14px 20px}.pay-link{width:100%}}
     @media(max-width:359px){.brand-logo{height:34px}.hero-signin{padding:0 10px;font-size:12px}.plan-card,.offer-bar{padding-left:14px;padding-right:14px}.freq-btn{font-size:13px}.freq-save{display:block;margin:2px auto 0;width:max-content}}
     @media(min-width:640px){
       .brandbar-inner,.hero{padding-left:28px;padding-right:28px}
@@ -251,6 +280,11 @@
       .fadein{opacity:1;transform:none}
     }
   </style>
+  <script>
+    // Compact presentation when embedded (Wix iframe) or served via /widget/.
+    (function(){var f;try{f=window.self!==window.top}catch(_){f=true}
+      if(f||/^\/widget\//.test(location.pathname))document.documentElement.classList.add('embedded')})();
+  </script>
 </head>
 <body>
 
@@ -291,6 +325,12 @@
   <!-- Member management -->
   <section id="manageSection" class="manage-card" style="display:none" aria-live="polite"></section>
   <div id="manageSignin" class="manage-signin"></div>
+
+  <!-- Returning member: first thing members see -->
+  <section class="member-strip top" id="memberStrip" aria-labelledby="memberStripTitle">
+    <div><h3 id="memberStripTitle">Already a member?</h3><p>Sign in to see renewals, change billing or update your card.</p></div>
+    <button type="button" onclick="openManageLogin()">Sign in to manage</button>
+  </section>
 
   <!-- Offer -->
   <section class="fadein offer-shell" id="plansSection" aria-labelledby="offerLabel">
@@ -339,12 +379,6 @@
     <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Manage online any time</div>
   </div>
 
-  <!-- Existing member -->
-  <div class="fadein member-strip" id="memberStrip">
-    <div><h3>Already a member?</h3><p>Sign in with your The 147 account to see renewals, change billing or update your card.</p></div>
-    <button type="button" onclick="openManageLogin()">Sign in to manage</button>
-  </div>
-
   <div class="fadein page-foot" id="pageFoot">
     Your account also works in The 147 app. <a href="https://the147bradford.replit.app" target="_blank" rel="noopener">Get the app</a> to book tables and track loyalty points.
   </div>
@@ -353,7 +387,7 @@
 
 <!-- ─── JOIN MODAL ─────────────────────────────── -->
 <div class="backdrop" id="joinModal">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalHeadSub" tabindex="-1">
 
     <!-- Modal header -->
     <div class="modal-head">
@@ -367,23 +401,20 @@
       <div class="success-ring">
         <svg viewBox="0 0 24 24" fill="none" stroke="#1559C3" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
-      <h3 class="success-title">You're in!</h3>
-      <p class="success-sub">Your account is ready. Taking you to Square to complete your payment — your membership activates automatically once done.</p>
+      <h3 class="success-title" id="successTitle" tabindex="-1">Almost done</h3>
+      <p class="success-sub" role="status">Preparing your secure Square payment page. Your membership is not active until Square confirms payment.</p>
       <div id="verifyNotice" style="display:none;background:#EAF1FC;border:1px solid #C9DAF5;border-radius:4px;padding:12px 14px;margin:0 0 18px;text-align:left;font-size:13px;color:#0C0F15;line-height:1.5">
         <strong>Check your inbox.</strong> We've sent a verification link to confirm your email — please click it so you can recover your bookings if you ever lose access. (You don't need to do this before paying.)
       </div>
       <div class="success-pill" id="successPill"></div>
       <div class="redirect-row">
         <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
-        Redirecting to payment…
+        Preparing payment page…
       </div>
-      <a id="manualPayBtn" href="#" target="_self" rel="noopener"
-         style="display:none;margin-top:18px;padding:14px 22px;background:#1559C3;color:#fff;border-radius:4px;font-weight:700;text-decoration:none;font-size:14px">
-        Open Payment Page
+      <a id="manualPayBtn" class="pay-link" href="#" target="_self" rel="noopener" style="display:none">
+        Continue to secure payment
       </a>
-      <div id="manualPayHint" style="display:none;margin-top:10px;font-size:12px;color:#64748B">
-        If you weren't taken to the payment page automatically, tap the button above.
-      </div>
+      <div id="manualPayHint" class="pay-fallback" style="display:none"></div>
     </div>
 
     <!-- Form pane -->
@@ -414,7 +445,7 @@
               and consent to my personal data being processed to manage my account and membership.
             </span>
           </label>
-          <div class="form-err" id="regErr"></div>
+          <div class="form-err" id="regErr" role="alert"></div>
           <div id="regMsg" class="form-ok" role="status"></div>
           <button type="submit" class="submit-btn" id="regBtn" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
@@ -430,7 +461,7 @@
             <input type="checkbox" id="joinTerms">
             <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
           </label>
-          <div class="form-err" id="loginErr"></div>
+          <div class="form-err" id="loginErr" role="alert"></div>
           <div class="form-msg form-ok" id="loginMsg" role="status"></div>
           <button type="submit" class="submit-btn" id="loginBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
@@ -445,7 +476,7 @@
         <form class="tab-panel" id="panelForgot" style="display:none;" onsubmit="doForgot();return false">
           <p class="form-note" style="margin-bottom:14px">Enter the email on your account and we'll send you a reset link.</p>
           <div class="fld"><label for="fEmail">Email</label><input type="email" id="fEmail" placeholder="name@example.com" autocomplete="email"></div>
-          <div class="form-err" id="forgotErr"></div>
+          <div class="form-err" id="forgotErr" role="alert"></div>
           <div class="form-msg form-ok" id="forgotMsg" role="status"></div>
           <button type="submit" class="submit-btn" id="forgotBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -473,6 +504,7 @@
   let selectedPlan = null;
   let authToken = null;
   let sessionGeneration = 0;
+  let dialogGeneration = 0;
   // Website logins live only in this document, never across visits.
   try{localStorage.removeItem('the147_customer_token')}catch(_){}
   let activeTab = 'reg';
@@ -492,31 +524,43 @@
   }
   const inFrame = (function(){try{return window.self!==window.top}catch(_){return true}})();
 
-  function isCommitmentPlan(p){
-    if(typeof p.minimumTermMonths==='number'&&p.minimumTermMonths>0)return true;
-    const t=String(p.tier||'').trim().toLowerCase(), n=String(p.name||'').trim().toLowerCase();
-    return /\b(black|platinum)\b/.test(t)||/\b(black|platinum)\b/.test(n);
+  // Server-derived terms: minimumTermMonths comes from /api/membership/plans
+  // and /billing. The name match is only a fallback for an older payload.
+  function termMonths(p){
+    if(p&&typeof p.minimumTermMonths==='number')return p.minimumTermMonths>0?p.minimumTermMonths:0;
+    const t=String(p&&p.tier||'').trim().toLowerCase(), n=String(p&&p.name||'').trim().toLowerCase();
+    return /\b(black|platinum)\b/.test(t)||/\b(black|platinum)\b/.test(n)?12:0;
   }
+  function isCommitmentPlan(p){return termMonths(p)>0}
+  // Billing plans (from /billing) lack interval data; read it from the public catalogue.
+  function intervalDays(p){
+    if(!p)return null;
+    if(typeof p.monthlyIntervalDays==='number')return p.monthlyIntervalDays;
+    const pub=allPlans.find(x=>x.id===p.id);
+    return pub&&typeof pub.monthlyIntervalDays==='number'?pub.monthlyIntervalDays:null;
+  }
+  function perShort(p,f){return f==='annual'?'yr':intervalDays(p)===30?'30 days':'mo'}
+  function perPhrase(p,f){return f==='annual'?'every year':intervalDays(p)===30?'every 30 days':'every month'}
   function commitmentCopy(p,f){
-    if(isCommitmentPlan(p)){
+    const m=termMonths(p);
+    if(m>0){
       return f==='annual'
-        ? '12-month minimum term. Billed annually and renews automatically each year until cancelled.'
-        : '12-month minimum term. Billed monthly; after the first year it continues month to month until cancelled.';
+        ? m+'-month minimum term. Billed annually and renews automatically each year until cancelled.'
+        : m+'-month minimum term. Billed '+perPhrase(p,f)+'; after the minimum term it continues until cancelled.';
     }
     return f==='annual'
       ? 'No minimum term. Renews automatically each year until cancelled.'
-      : p.monthlyIntervalDays===30
-        ? 'No minimum term. Renews automatically every 30 days until cancelled.'
-        : 'No minimum term. Renews monthly until cancelled.';
+      : 'No minimum term. Renews automatically '+perPhrase(p,f)+' until cancelled.';
   }
-  function openCheckout(url){
-    if(inFrame){
-      let w=null;try{w=window.open(url,'_blank','noopener')}catch(_){}
-      if(!w){try{window.top.location.href=url}catch(_){/* manual button remains */}}
-      return;
-    }
-    try{window.location.assign(url)}catch(_){window.location.href=url}
+  // Checkout is only ever opened by an explicit customer click on this link.
+  function checkoutLinkHtml(url,label){
+    let safe='';try{const u=new URL(url,location.href);if(u.protocol==='https:'||u.protocol==='http:')safe=u.href}catch(_){}
+    if(!safe)return '<span>Square did not return a valid payment link. Please contact the club.</span>';
+    const tgt=inFrame?'_blank':'_self';
+    return '<a class="pay-link" href="'+esc(safe)+'" target="'+tgt+'" rel="noopener">'+esc(label||'Continue to secure payment')+'</a>'+
+      '<div class="pay-fallback">'+(inFrame?'Opens in a new tab. ':'')+'If the button does not open, copy this link: <a href="'+esc(safe)+'" target="'+tgt+'" rel="noopener">'+esc(safe)+'</a></div>';
   }
+  function owns(tok,gen){return !!tok&&authToken===tok&&sessionGeneration===gen}
   function fmtDate(d){if(!d)return '—';const x=new Date(d);return isNaN(x)?esc(d):x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
   function getTok(){return authToken}
 
@@ -532,32 +576,42 @@
     switchTab('login');
     document.getElementById('tabReg').style.display='none';
     document.getElementById('loginBtn').lastChild.textContent='Sign In';
-    document.getElementById('joinModal').classList.add('open');
+    showDialog();
   }
   window.openManageLogin=openManageLogin;
 
+  let manageSeq=0;
   async function loadManage(){
-    const tok=getTok();const sec=document.getElementById('manageSection');
+    const tok=getTok(),gen=sessionGeneration,seq=++manageSeq;const sec=document.getElementById('manageSection');
+    // Only the latest load for the still-signed-in account may touch the page.
+    const live=()=>owns(tok,gen)&&seq===manageSeq;
     if(!tok){sec.style.display='none';return}
+    const expired=()=>{
+      sessionGeneration++;closeMembershipCard();authToken=null;billing=null;hasMembership=false;
+      sec.innerHTML='';sec.style.display='none';
+      {const ms=document.getElementById('memberStrip');if(ms)ms.style.display=''}
+      if(allPlans.length)renderPlans();
+    };
     try{
       // Refresh Square-group memberships first so invitation-only VIP status
       // is present before deciding which self-service controls to render.
       const sr=await fetch(API+'/api/membership/my-subscription',{headers:{Authorization:'Bearer '+tok}});
-      if(sr.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
+      if(!live())return;
+      if(sr.status===401){expired();return}
       if(!sr.ok)throw new Error('Could not refresh your membership from Square ('+sr.status+').');
       const r=await fetch(API+'/api/membership/billing',{headers:{Authorization:'Bearer '+tok}});
-      if(r.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
+      if(!live())return;
+      if(r.status===401){expired();return}
       const bd=await r.json().catch(()=>null);
-      if(getTok()!==tok)return;
+      if(!live())return;
       if(!r.ok)throw new Error((bd&&bd.message)||('Could not load your billing details ('+r.status+').'));
       billing=bd||{subscription:null,plans:[]};
     }catch(e){
-      if(getTok()!==tok)return;
+      if(!live())return;
       sec.style.display='block';
-      sec.innerHTML='<h3>Your membership</h3><p class="m-note">'+esc((e&&e.message)||'We could not load your billing details.')+'</p><button class="m-btn ghost" onclick="loadManage()">Try again</button>';
+      sec.innerHTML='<h3>Your membership</h3><p class="m-note" role="alert">'+esc((e&&e.message)||'We could not load your billing details.')+'</p><button class="m-btn ghost" onclick="loadManage()">Try again</button> <button class="m-link" onclick="signOutPortal()">Sign out</button>';
       return;
     }
-    authToken=tok;
     hasMembership=!!(billing&&billing.subscription);
     document.getElementById('manageSignin').style.display='none';{const ms=document.getElementById('memberStrip');if(ms)ms.style.display='none'}
     if(allPlans.length)renderPlans();
@@ -587,7 +641,7 @@
       row('Plan',esc(sub.planName))+
       (sub.source==='square_pos'
         ?row('Billing',sub.autoRenewScheduled?'Prepaid (automatic billing scheduled)':'Prepaid 12 months (no auto renewal)')
-        :row('Billing',sub.frequency==='annual'?'Annual (auto-renews)':'Monthly')+row('Next renewal',fmtDate(sub.renewalDate)))+
+        :row('Billing',sub.frequency==='annual'?'Annual (auto-renews)':intervalDays(cur)===30?'Every 30 days':'Monthly')+row('Next renewal',fmtDate(sub.renewalDate)))+
       (sub.commitmentEndDate?row('Minimum term ends',fmtDate(sub.commitmentEndDate)):'')+
       (sub.pendingPlanName?row('Scheduled change',esc(sub.pendingPlanName)+' from '+fmtDate(sub.pendingDate)):'')+
       (sub.cancellationDate?row('Ends on',fmtDate(sub.cancellationDate)):'');
@@ -620,7 +674,7 @@
         '<p class="m-note">Choose a paid membership below. Your first payment is due now; VIP benefits stay active until Square confirms it. VIP is not available as a customer downgrade option.</p>';
       if(!opts.length)h+='<p class="m-note">No paid membership options are available right now.</p>';
       else{
-        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+(o.f==='annual'?'yr':o.p.monthlyIntervalDays===30?'30 days':'mo')+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term starting with today’s first payment.':'No minimum term.')+'</span></span></label>').join('');
+        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+perShort(o.p,o.f)+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term starting with today’s first payment.':'No minimum term.')+'</span></span></label>').join('');
         h+='<label class="m-opt" style="border:none;padding:4px 0"><input type="checkbox" id="mTerms" onchange="mOptChanged()"><span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a>, the selected membership price and billing frequency, and any minimum term. I authorise the first payment now.</span></label>';
         h+='<button class="m-btn" id="mVipUpgradeBtn" disabled onclick="mSubmitVipUpgrade()">Upgrade and pay now</button>';
       }
@@ -642,7 +696,7 @@
       h+='<h4>Upgrade or switch billing</h4><p class="m-note" style="margin:0 0 8px">Changes take effect at your next renewal ('+fmtDate(sub.renewalDate)+').</p>';
       if(!opts.length)h+='<p class="m-note">You are on the highest available option.</p>';
       else{
-        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+(o.f==='annual'?'yr':'mo')+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term from the change date.':'No minimum term.')+'</span></span></label>').join('');
+        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+perShort(o.p,o.f)+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term from the change date.':'No minimum term.')+'</span></span></label>').join('');
         h+='<label class="m-opt" style="border:none;padding:4px 0"><input type="checkbox" id="mTerms" onchange="mOptChanged()"><span id="mTermsText">I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> for the selected change, including any minimum term.</span></label>';
         h+='<button class="m-btn" id="mChangeBtn" disabled onclick="mSubmitChange()">Schedule change</button>';
       }
@@ -658,6 +712,7 @@
     sec._opts=opts;
   }
   function addMonthsIso(d,n){if(!d)return null;const x=new Date(String(d).slice(0,10)+'T12:00:00Z');if(isNaN(x))return null;const day=x.getUTCDate();x.setUTCDate(1);x.setUTCMonth(x.getUTCMonth()+n);const last=new Date(Date.UTC(x.getUTCFullYear(),x.getUTCMonth()+1,0)).getUTCDate();x.setUTCDate(Math.min(day,last));return x.toISOString().slice(0,10)}
+  function addDaysIso(d,n){if(!d)return null;const x=new Date(String(d).slice(0,10)+'T12:00:00Z');if(isNaN(x))return null;x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)}
   function arStart(sub){return sub.autoRenewStartDate||sub.prepaidUntilDate||null}
   function renderPrepaid(sub,cur){
     let h='<h4>Prepaid membership</h4>'+
@@ -666,7 +721,7 @@
       row('Paid through',sub.prepaidUntilDate?fmtDate(sub.prepaidUntilDate):'Unknown');
     if(sub.autoRenewScheduled){
       h+=row('Automatic billing starts',fmtDate(sub.autoRenewStartDate))+
-        '<p class="m-note">Automatic '+(sub.frequency==='annual'?'annual':'monthly')+' billing is scheduled. Nothing is charged before '+fmtDate(sub.autoRenewStartDate)+'.</p>'+
+        '<p class="m-note">Automatic '+(sub.frequency==='annual'?'annual':intervalDays(cur)===30?'30-day':'monthly')+' billing is scheduled. Nothing is charged before '+fmtDate(sub.autoRenewStartDate)+'.</p>'+
         (sub.cancellationDate?'':'<div id="mArCancelWrap"><button class="m-btn ghost" id="mArCancelAsk" onclick="mArAskCancel()">Cancel automatic billing</button></div>')+
         '<div class="m-msg" role="status" id="mArCancelMsg"></div>';
       return h;
@@ -676,8 +731,8 @@
       h+='<p class="m-note">Automatic billing is not available for this membership online. Please speak to staff.</p>';return h;
     }
     const start=arStart(sub);
-    const opt=f=>{const pr=priceOf(cur,f);if(pr==null)return '';const thr=addMonthsIso(start,f==='annual'?12:1);
-      return '<label class="m-opt"><input type="radio" name="mArFreq" value="'+f+'" onchange="mArChanged()"><span><strong>'+esc(cur.name)+' · £'+(pr/100).toFixed(2)+'/'+(f==='annual'?'yr':'mo')+'</strong><br><span style="color:var(--text-2)">First charge '+fmtDate(start)+', covering to '+fmtDate(thr)+'. '+(cur.minimumTermMonths>0?cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+' (ends '+fmtDate(addMonthsIso(start,cur.minimumTermMonths))+').':'No minimum term.')+'</span></span></label>'};
+    const opt=f=>{const pr=priceOf(cur,f);if(pr==null)return '';const thr=f==='annual'?addMonthsIso(start,12):intervalDays(cur)===30?addDaysIso(start,30):addMonthsIso(start,1);
+      return '<label class="m-opt"><input type="radio" name="mArFreq" value="'+f+'" onchange="mArChanged()"><span><strong>'+esc(cur.name)+' · £'+(pr/100).toFixed(2)+'/'+perShort(cur,f)+'</strong><br><span style="color:var(--text-2)">First charge '+fmtDate(start)+', covering to '+fmtDate(thr)+'. '+(cur.minimumTermMonths>0?cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+' (ends '+fmtDate(addMonthsIso(start,cur.minimumTermMonths))+').':'No minimum term.')+'</span></span></label>'};
     h+='<h4>Turn on automatic billing</h4><p class="m-note" style="margin:0 0 8px">Keep the same plan after your prepaid period. No charge today. The minimum term (if any) starts at the first billing date, not your till purchase.</p>'+
       opt('monthly')+opt('annual')+
       '<button class="m-btn ghost" id="mArOpen" disabled onclick="mArOpenCard()">Set up card</button>'+
@@ -695,7 +750,7 @@
     const o=document.getElementById('mArOpen');if(o&&!membershipCard)o.disabled=!f||cardWorking;
     const tt=document.getElementById('mArTermsText');
     if(tt&&f&&cur){const start=arStart(sub),pr=priceOf(cur,f);
-      tt.innerHTML='I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and authorise The 147 to charge this card £'+(pr/100).toFixed(2)+' '+(f==='annual'?'every year':'every month')+' from '+fmtDate(start)+' until I cancel.'+(cur.minimumTermMonths>0?' I accept a '+cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+'.':'')+' Nothing is charged today.'}
+      tt.innerHTML='I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and authorise The 147 to charge this card £'+(pr/100).toFixed(2)+' '+perPhrase(cur,f)+' from '+fmtDate(start)+' until I cancel.'+(cur.minimumTermMonths>0?' I accept a '+cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+'.':'')+' Nothing is charged today.'}
     const t=document.getElementById('mArTerms'),b=document.getElementById('mArSave');
     if(b)b.disabled=cardWorking||!membershipCard||!f||!t||!t.checked;
   };
@@ -706,7 +761,9 @@
     const setup=cardSetup,open=document.getElementById('mArOpen');
     open.disabled=true;arMsg('Loading secure card form…',false);
     try{
+      const ownerToken=getTok(),gen=sessionGeneration;
       const r=await fetch(API+'/api/public/square-config'),cfg=await r.json();
+      if(setup!==cardSetup||!owns(ownerToken,gen))return;
       if(!r.ok||!cfg.configured||!cfg.applicationId||!cfg.locationId)throw new Error('Secure card setup is unavailable. Please retry later.');
       const src=cfg.environment==='production'?'https://web.squarecdn.com/v1/square.js':'https://sandbox.web.squarecdn.com/v1/square.js';
       if(!window.Square)await new Promise((resolve,reject)=>{
@@ -730,7 +787,7 @@
   window.mArSave=async function(){
     const f=arFreq(),t=document.getElementById('mArTerms');
     if(cardWorking||!membershipCard||!f||!t||!t.checked)return;
-    const ownerToken=getTok(),sub=billing&&billing.subscription,subscriptionId=sub&&sub.id;
+    const ownerToken=getTok(),gen=sessionGeneration,sub=billing&&billing.subscription,subscriptionId=sub&&sub.id;
     const cur=sub&&(billing.plans||[]).find(p=>p.id===sub.planId);
     if(!ownerToken||!subscriptionId||!cur)return;
     cardWorking=true;window.mArChanged();document.getElementById('mArClose').disabled=true;
@@ -745,11 +802,13 @@
       if(cur.minimumTermMonths>0)body.minimumTermAccepted=true;
       const r=await fetch(API+'/api/membership/enable-auto-renew',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Automatic billing could not be confirmed. Refresh before retrying.');
       cardWorking=false;closeMembershipCard();await loadManage();
+      if(!owns(ownerToken,gen))return;
       const m=document.getElementById('mArCancelMsg');if(m){m.className='m-msg ok';m.textContent=(d.message||'Automatic billing scheduled.')+(d.effectiveDate?' First charge '+fmtDate(d.effectiveDate)+'.':'')}
     }catch(e){
-      cardWorking=false;await loadManage();arMsg(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
+      cardWorking=false;if(!owns(ownerToken,gen))return;await loadManage();if(!owns(ownerToken,gen))return;arMsg(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
     }finally{cardWorking=false}
   };
   window.mArAskCancel=function(){
@@ -758,15 +817,17 @@
   };
   window.mArDoCancel=async function(){
     const b=document.getElementById('mArCancelBtn'),m=document.getElementById('mArCancelMsg');
+    const ownerToken=getTok(),gen=sessionGeneration;if(!ownerToken)return;
     b.disabled=true;b.textContent='Cancelling…';m.className='m-msg';
     try{
-      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({confirmed:true})});
+      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({confirmed:true})});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not cancel.');
-      await loadManage();
+      await loadManage();if(!owns(ownerToken,gen))return;
       const m2=document.getElementById('mArCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.textContent=d.message||'Automatic billing cancelled.';
-    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
+    }catch(e){if(!owns(ownerToken,gen))return;m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
   };
   function row(a,b){return '<div class="m-row"><span>'+a+'</span><span>'+b+'</span></div>'}
   function cardMessage(text,error){
@@ -784,7 +845,9 @@
     const setup=cardSetup,open=document.getElementById('mCardOpen');
     open.disabled=true;cardMessage('Loading secure card form…',false);
     try{
+      const ownerToken=getTok(),gen=sessionGeneration;
       const r=await fetch(API+'/api/public/square-config'),cfg=await r.json();
+      if(setup!==cardSetup||!owns(ownerToken,gen))return;
       if(!r.ok||!cfg.configured||!cfg.applicationId||!cfg.locationId)throw new Error('Secure card setup is unavailable. Please retry later.');
       const src=cfg.environment==='production'?'https://web.squarecdn.com/v1/square.js':'https://sandbox.web.squarecdn.com/v1/square.js';
       if(!window.Square)await new Promise((resolve,reject)=>{
@@ -808,7 +871,7 @@
   window.mSaveCard=async function(){
     const consent=document.getElementById('mCardConsent');
     if(cardWorking||!membershipCard||!consent||!consent.checked)return;
-    const ownerToken=getTok(),subscriptionId=billing&&billing.subscription&&billing.subscription.id;
+    const ownerToken=getTok(),gen=sessionGeneration,subscriptionId=billing&&billing.subscription&&billing.subscription.id;
     if(!ownerToken||!subscriptionId)return;
     cardWorking=true;window.mCardConsentChanged();document.getElementById('mCardClose').disabled=true;
     cardMessage('Authorising card…',false);
@@ -821,12 +884,13 @@
       const r=await fetch(API+'/api/membership/payment-card',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},
         body:JSON.stringify({sourceId:result.token,verificationToken:verified.token,authorised:true})});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Card update could not be confirmed. Refresh billing before retrying.');
-      cardWorking=false;closeMembershipCard();await loadManage();cardMessage(d.message,false);
+      cardWorking=false;closeMembershipCard();await loadManage();if(owns(ownerToken,gen))cardMessage(d.message||'Replacement card authorised.',false);
     }catch(e){
       // Discard a used nonce. Retry always tokenises and authorises afresh.
-      cardWorking=false;await loadManage();cardMessage(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
-    }finally{cardWorking=false;window.mCardConsentChanged()}
+      cardWorking=false;if(!owns(ownerToken,gen))return;await loadManage();if(!owns(ownerToken,gen))return;cardMessage(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
+    }finally{cardWorking=false;if(owns(ownerToken,gen))window.mCardConsentChanged()}
   };
   function selectedOpt(){const r=document.querySelector('input[name="mOpt"]:checked');const o=document.getElementById('manageSection')._opts||[];return r?o[Number(r.value)]:null}
   window.mOptChanged=function(){
@@ -836,20 +900,22 @@
   window.mSubmitChange=async function(){
     const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn');const m=document.getElementById('mChangeMsg');
     if(!o||!t||!t.checked)return;
+    const ownerToken=getTok(),gen=sessionGeneration;if(!ownerToken)return;
     b.disabled=true;b.textContent='Scheduling…';m.className='m-msg';
     try{
-      const r=await fetch(API+'/api/membership/change-plan',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({planId:o.p.id,billingFrequency:o.f,termsAccepted:true})});
+      const r=await fetch(API+'/api/membership/change-plan',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({planId:o.p.id,billingFrequency:o.f,termsAccepted:true})});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not schedule the change.');
-      await loadManage();
+      await loadManage();if(!owns(ownerToken,gen))return;
       const m2=document.getElementById('mChangeMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.textContent=(d.message||'Change scheduled.')+(d.effectiveDate?' Effective '+fmtDate(d.effectiveDate)+'.':'');
-    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Schedule change'}
+    }catch(e){if(!owns(ownerToken,gen))return;m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Schedule change'}
   };
   window.mSubmitVipUpgrade=async function(){
     const o=selectedOpt(),t=document.getElementById('mTerms'),b=document.getElementById('mVipUpgradeBtn'),m=document.getElementById('mChangeMsg');
     if(!o||!t||!t.checked||!b||!m)return;
-    const ownerToken=getTok();
+    const ownerToken=getTok(),gen=sessionGeneration;
     if(!ownerToken)return;
     b.disabled=true;b.textContent='Starting upgrade…';m.className='m-msg';
     try{
@@ -857,28 +923,32 @@
       if(o.p.minimumTermMonths>0)body.minimumTermAccepted=true;
       const r=await fetch(API+'/api/membership/join',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not start the upgrade.');
       if(!d.checkoutUrl)throw new Error('Square did not provide a payment page. Your VIP membership has not been changed.');
-      m.className='m-msg ok';m.textContent='Your VIP benefits stay active until Square confirms your first payment. Opening secure checkout…';
-      openCheckout(d.checkoutUrl);
-    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Upgrade and pay now'}
+      b.textContent='Payment page ready';
+      m.className='m-msg ok';m.innerHTML='Payment pending. Your VIP benefits stay active until Square confirms your first payment.<br>'+checkoutLinkHtml(d.checkoutUrl,'Continue to secure payment');
+    }catch(e){if(!owns(ownerToken,gen))return;m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Upgrade and pay now'}
   };
   let upgradeCheckoutWorking=false;
   window.mUpgradeCheckout=async function(action){
     if(upgradeCheckoutWorking||!billing?.pendingUpgrade)return;
     if(action==='abandon'&&!window.confirm('Abandon this unpaid upgrade? VIP remains active. Square must confirm cancellation before another upgrade is allowed.'))return;
-    const ownerToken=getTok(),attemptId=billing.pendingUpgrade.id;
+    const ownerToken=getTok(),gen=sessionGeneration,attemptId=billing.pendingUpgrade.id;
     if(!ownerToken)return;
     upgradeCheckoutWorking=true;
-    const m=document.getElementById('mChangeMsg');m.textContent='Checking Square…';
+    const m=document.getElementById('mChangeMsg');m.className='m-msg ok';m.textContent='Checking Square…';
     try{
       const r=await fetch(API+'/api/membership/upgrade-checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({attemptId,action})});
       const d=await r.json().catch(()=>({}));
-      if(getTok()!==ownerToken)return;
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not verify checkout. Please refresh.');
       await loadManage();
-      if(d.checkoutUrl)openCheckout(d.checkoutUrl);
-    }catch(e){if(getTok()===ownerToken){m.className='m-msg err';m.textContent=e.message}}
+      if(!owns(ownerToken,gen))return;
+      const m2=document.getElementById('mChangeMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
+      if(d.checkoutUrl){m2.className='m-msg ok';m2.innerHTML='Payment pending. Nothing changes until Square confirms payment.<br>'+checkoutLinkHtml(d.checkoutUrl,'Continue to secure payment')}
+      else if(d.message){m2.className='m-msg ok';m2.textContent=d.message}
+    }catch(e){if(owns(ownerToken,gen)){const me=document.getElementById('mChangeMsg')||m;me.className='m-msg err';me.textContent=e.message||'Network error — please try again.'}}
     finally{upgradeCheckoutWorking=false}
   };
   window.mAskCancel=function(){
@@ -888,31 +958,34 @@
   window.renderManageAgain=function(){renderManage()};
   window.mDoCancel=async function(){
     const b=document.getElementById('mCancelBtn');const m=document.getElementById('mCancelMsg');
+    const ownerToken=getTok(),gen=sessionGeneration;if(!ownerToken)return;
     b.disabled=true;b.textContent='Cancelling…';m.className='m-msg';
     try{
-      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({confirmed:true})});
+      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({confirmed:true})});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not cancel.');
-      await loadManage();
+      await loadManage();if(!owns(ownerToken,gen))return;
       const m2=document.getElementById('mCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.textContent=d.message||'Cancellation scheduled.';
-    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
+    }catch(e){if(!owns(ownerToken,gen))return;m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
   };
   window.mUndoCancel=async function(){
     const b=document.getElementById('mUndoCancelBtn'),m=document.getElementById('mUndoCancelMsg');
     if(!b||!m)return;
-    const ownerToken=getTok(),subscriptionId=billing&&billing.subscription&&billing.subscription.id;
+    const ownerToken=getTok(),gen=sessionGeneration,subscriptionId=billing&&billing.subscription&&billing.subscription.id;
     if(!ownerToken||!subscriptionId)return;
     b.disabled=true;b.textContent='Keeping membership…';m.className='m-msg';
     try{
       if(getTok()!==ownerToken||!billing||!billing.subscription||billing.subscription.id!==subscriptionId)throw new Error('Your signed-in account changed. Refresh your membership details.');
       const r=await fetch(API+'/api/membership/undo-cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({confirmed:true})});
       const d=await r.json().catch(()=>({}));
+      if(!owns(ownerToken,gen))return;
       if(!r.ok)throw new Error(d.message||'Could not keep the membership.');
-      await loadManage();
+      await loadManage();if(!owns(ownerToken,gen))return;
       const m2=document.getElementById('mUndoCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.setAttribute('role','status');m2.textContent=d.message||'Your membership continues on its existing billing schedule.';
-    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Keep membership'}
+    }catch(e){if(!owns(ownerToken,gen))return;m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Keep membership'}
   };
   window.signOutPortal=function(){
     sessionGeneration++;
@@ -927,6 +1000,7 @@
     document.getElementById('manageSignin').style.display='';{const ms=document.getElementById('memberStrip');if(ms)ms.style.display=''}
     if(allPlans.length)renderPlans();
     closeModal();
+    resetSuccessPane();
     hideVerifyBanner();
     document.querySelectorAll('#joinModal input').forEach(input=>{
       if(input.type==='checkbox')input.checked=false;else input.value='';
@@ -977,8 +1051,11 @@
   function money(pence){const v=pence/100;return '£'+(Number.isInteger(v)?String(v):v.toFixed(2))}
   function annualSaving(p){
     if(p.priceMonthly==null||p.priceAnnual==null)return 0;
-    const d=p.priceMonthly*12-p.priceAnnual;return d>0?d:0;
+    const d=monthlyYearCost(p)-p.priceAnnual;return d>0?d:0;
   }
+  // A 30-day cadence charges about 12.17 times a year, not 12.
+  function monthlyYearCost(p){return intervalDays(p)===30?Math.round(p.priceMonthly*365/30):p.priceMonthly*12}
+  function monthlyYearLabel(p){return intervalDays(p)===30?'a year of 30-day payments ('+money(monthlyYearCost(p))+')':'12 monthly payments of '+money(p.priceMonthly)}
   const ICON_ARROW='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
   function renderPlan(p, isPopular, isSelected){
     const color = safeColor(p.color);
@@ -993,7 +1070,7 @@
     const commit = isCommitmentPlan(p);
     let saving='';
     if(annual&&save>0){
-      saving='<div class="plan-saving"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>Works out at <strong>'+money(Math.round(p.priceAnnual/12))+' a month</strong>. That is <strong>'+money(save)+' less</strong> than 12 monthly payments of '+money(p.priceMonthly)+'.</span></div>';
+      saving='<div class="plan-saving"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>Works out at <strong>'+money(Math.round(p.priceAnnual/12))+' a month</strong>. That is <strong>'+money(save)+' less</strong> than '+monthlyYearLabel(p)+'.</span></div>';
     }else if(!annual&&save>0){
       saving='<div class="plan-saving nudge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Paying yearly is '+money(p.priceAnnual)+', saving '+money(save)+'. <button type="button" onclick="setFreq(\'annual\')">Switch to annual</button></span></div>';
     }
@@ -1040,7 +1117,7 @@
     const focus=allPlans.find(p=>String(p.id)===requestedPlanId)||allPlans[0];
     if(focus){
       const mh=document.getElementById('freqMonthlyHint'),ah=document.getElementById('freqAnnualHint'),sv=document.getElementById('freqSave');
-      if(mh&&focus.priceMonthly!=null)mh.textContent=money(focus.priceMonthly)+' a month';
+      if(mh&&focus.priceMonthly!=null)mh.textContent=money(focus.priceMonthly)+(intervalDays(focus)===30?' every 30 days':' a month');
       if(ah&&focus.priceAnnual!=null)ah.textContent=money(focus.priceAnnual)+' a year';
       const save=annualSaving(focus);
       if(sv)sv.textContent=save>0?'Save '+money(save):'';
@@ -1101,15 +1178,7 @@
     manageOnly=false;
     document.getElementById('joinTermsRow').style.display='flex';
     document.getElementById('joinTerms').checked=false;
-    document.getElementById('joinTermsCommit').textContent=isCommitmentPlan(p)
-      ? (annual
-        ? 'I understand this has a 12-month minimum term, bills annually and renews automatically each year until cancelled.'
-        : 'I understand this has a 12-month minimum term, bills monthly and continues month to month afterwards until cancelled.')
-      : (annual
-        ? 'I understand this renews automatically each year until cancelled.'
-        : thirtyDay
-          ? 'I understand this renews automatically every 30 days until cancelled.'
-          : 'I understand this renews monthly until cancelled.');
+    document.getElementById('joinTermsCommit').textContent='I understand: '+commitmentCopy(p,annual?'annual':'monthly')+' Price: '+price+'.';
     document.getElementById('tabReg').style.display='';
     document.querySelector('#joinModal .modal-title').textContent='Join The 147';
     document.getElementById('modalHeadSub').textContent='Create an account or sign in to continue';
@@ -1130,11 +1199,75 @@
     if(cb)cb.checked=false;
     switchTab('reg');
     syncConsentBtn();
-    document.getElementById('joinModal').classList.add('open');
+    showDialog();
   }
 
+  /* Accessible dialog: focus moves in, Tab is trapped, Escape closes,
+     background is inert, focus returns to the opener. */
+  let dialogReturnFocus=null;
+  const FOCUSABLE='a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function dialogEl(){return document.querySelector('#joinModal .modal')}
+  function focusables(){
+    return Array.from(dialogEl().querySelectorAll(FOCUSABLE)).filter(el=>el.offsetParent!==null||el===document.activeElement);
+  }
+  function setBackgroundInert(on){
+    document.querySelectorAll('body > .brandbar, body > .hero, body > main, #verifyBanner').forEach(el=>{
+      if(on){el.setAttribute('inert','');el.setAttribute('aria-hidden','true')}else{el.removeAttribute('inert');el.removeAttribute('aria-hidden')}
+    });
+  }
+  function showDialog(){
+    dialogGeneration++;
+    const loginBtn=document.getElementById('loginBtn');
+    loginBtn.disabled=false;
+    loginBtn.textContent=manageOnly?'Sign In':'Sign In & Pay';
+    syncConsentBtn();
+    const bd=document.getElementById('joinModal');
+    if(!bd.classList.contains('open')){
+      const a=document.activeElement;
+      dialogReturnFocus=(a&&a!==document.body)?a:null;
+    }
+    bd.classList.add('open');
+    setBackgroundInert(true);
+    dialogEl().scrollTop=0;
+    requestAnimationFrame(()=>{
+      const first=focusables().find(el=>el.tagName==='INPUT')||focusables()[0]||dialogEl();
+      try{first.focus({preventScroll:true})}catch(_){first.focus()}
+    });
+  }
   function closeModal(){
-    document.getElementById('joinModal').classList.remove('open');
+    dialogGeneration++;
+    const bd=document.getElementById('joinModal');
+    const wasOpen=bd.classList.contains('open');
+    bd.classList.remove('open');
+    setBackgroundInert(false);
+    if(!wasOpen)return;
+    let target=dialogReturnFocus;dialogReturnFocus=null;
+    // The opener may have been re-rendered; fall back to a stable control.
+    if(!target||!document.contains(target)||target.offsetParent===null){
+      const ms=document.getElementById('manageSection');
+      target=(ms&&ms.style.display!=='none'&&ms.querySelector('h3'))||document.querySelector('.hero-signin');
+      if(target&&target.tagName==='H3')target.setAttribute('tabindex','-1');
+    }
+    if(target)try{target.focus({preventScroll:false})}catch(_){}
+  }
+  document.addEventListener('keydown',e=>{
+    const bd=document.getElementById('joinModal');
+    if(!bd.classList.contains('open'))return;
+    if(e.key==='Escape'){e.preventDefault();closeModal();return}
+    if(e.key!=='Tab')return;
+    const list=focusables();
+    if(!list.length){e.preventDefault();dialogEl().focus();return}
+    const first=list[0],last=list[list.length-1],cur=document.activeElement;
+    if(!dialogEl().contains(cur)){e.preventDefault();first.focus();return}
+    if(e.shiftKey&&(cur===first||cur===dialogEl())){e.preventDefault();last.focus()}
+    else if(!e.shiftKey&&cur===last){e.preventDefault();first.focus()}
+  });
+  function showFieldError(errId,msg,fieldId){
+    const err=document.getElementById(errId);
+    err.textContent=msg;err.classList.remove('show');void err.offsetWidth;err.classList.add('show');
+    document.querySelectorAll('#joinModal input[aria-invalid]').forEach(i=>{i.removeAttribute('aria-invalid');i.removeAttribute('aria-describedby')});
+    const f=fieldId&&document.getElementById(fieldId);
+    if(f){f.setAttribute('aria-invalid','true');f.setAttribute('aria-describedby',errId);f.focus()}
   }
 
   // close on backdrop click — only when both press AND release happen on the backdrop itself
@@ -1213,10 +1346,10 @@
     const consent=document.getElementById('rConsent').checked;
     const err=document.getElementById('regErr');
     err.classList.remove('show');
-    if(!first||!last){err.textContent='Please enter your full name.';err.classList.add('show');return}
-    if(!email||!email.includes('@')){err.textContent='Please enter a valid email address.';err.classList.add('show');return}
-    if(pass.length<6){err.textContent='Password must be at least 6 characters.';err.classList.add('show');return}
-    if(!consent){err.textContent='Please tick the box to agree to the Privacy Policy.';err.classList.add('show');return}
+    if(!first||!last){showFieldError('regErr','Please enter your full name.',first?'rLast':'rFirst');return}
+    if(!email||!email.includes('@')){showFieldError('regErr','Please enter a valid email address.','rEmail');return}
+    if(pass.length<6){showFieldError('regErr','Password must be at least 6 characters.','rPass');return}
+    if(!consent){showFieldError('regErr','Please tick the box to agree to the Privacy Policy.','rConsent');return}
     const btn=document.getElementById('regBtn');
     btn.disabled=true;btn.textContent='Creating account…';
     try{
@@ -1243,30 +1376,35 @@
     const pass=document.getElementById('lPass').value;
     const err=document.getElementById('loginErr');
     err.classList.remove('show');
-    if(!email||!pass){err.textContent='Please enter your email and password.';err.classList.add('show');return}
-    if(!manageOnly&&!document.getElementById('joinTerms').checked){err.textContent='Please tick the box to accept the membership terms.';err.classList.add('show');return}
+    if(!email||!pass){showFieldError('loginErr','Please enter your email and password.',email?'lPass':'lEmail');return}
+    if(!manageOnly&&!document.getElementById('joinTerms').checked){showFieldError('loginErr','Please tick the box to accept the membership terms.','joinTerms');return}
     const btn=document.getElementById('loginBtn');
     btn.disabled=true;btn.textContent='Signing in…';
     const loginGeneration=sessionGeneration;
+    const loginDialog=dialogGeneration, loginPlan=selectedPlan, loginManage=manageOnly;
+    const currentAttempt=()=>loginGeneration===sessionGeneration && loginDialog===dialogGeneration &&
+      loginPlan===selectedPlan && loginManage===manageOnly && document.getElementById('joinModal').classList.contains('open');
     try{
       const r=await fetch(API+'/api/customers/login',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({email,password:pass}),
       });
       const d=await r.json();
-      if(!r.ok){err.textContent=d.message||'Sign-in failed. Check your email and password.';err.classList.add('show');return}
-      if(loginGeneration!==sessionGeneration){
+      if(!currentAttempt()){
         if(d.token)fetch(API+'/api/customers/logout',{method:'POST',headers:{Authorization:'Bearer '+d.token},keepalive:true}).catch(()=>{});
         return;
       }
+      if(!r.ok){err.textContent=d.message||'Sign-in failed. Check your email and password.';err.classList.add('show');return}
       authToken=d.token;
+      const tok=d.token,gen=sessionGeneration;
       if(d.customer && d.customer.emailVerified===false) showVerifyBanner(false);
       if(manageOnly){closeModal();await loadManage();return}
       await loadManage();
+      if(!owns(tok,gen)||!currentAttempt())return;
       if(hasMembership){closeModal();document.getElementById('manageSection').scrollIntoView({behavior:'smooth'});return}
-      await doJoin();
-    }catch{err.textContent='Network error — please try again.';err.classList.add('show');}
-    finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Sign In & Pay';}
+      await doJoin(loginPlan,loginDialog);
+    }catch{if(currentAttempt()){err.textContent='Network error — please try again.';err.classList.add('show');}}
+    finally{if(currentAttempt()){btn.disabled=false;btn.textContent=manageOnly?'Sign In':'Sign In & Pay';syncConsentBtn();}}
   }
   window.doLogin=doLogin;
 
@@ -1276,7 +1414,7 @@
     const err=document.getElementById('forgotErr');
     const msg=document.getElementById('forgotMsg');
     err.classList.remove('show');msg.style.display='none';
-    if(!email||!email.includes('@')){err.textContent='Please enter a valid email address.';err.classList.add('show');return;}
+    if(!email||!email.includes('@')){showFieldError('forgotErr','Please enter a valid email address.','fEmail');return;}
     const btn=document.getElementById('forgotBtn');
     btn.disabled=true;btn.textContent='Sending…';
     try{
@@ -1308,26 +1446,29 @@
     const tok=getTok();
     if(!tok)return;
     try{
+      const gen=sessionGeneration;
       const r=await fetch(API+'/api/customers/me',{headers:{'Authorization':'Bearer '+tok}});
-      if(r.status===401){try{localStorage.removeItem('the147_customer_token')}catch(_){};return}
-      if(!r.ok)return;
+      if(!owns(tok,gen)||!r.ok)return;
       const d=await r.json();
-      if(getTok()!==tok)return;
-      if(d && d.emailVerified===false){authToken=tok;showVerifyBanner(false)}
+      if(!owns(tok,gen))return;
+      if(d && d.emailVerified===false){showVerifyBanner(false)}
       else hideVerifyBanner();
     }catch(_){}
   }
   async function resendVerifyEmail(){
-    if(!authToken)return;
+    const tok=authToken,gen=sessionGeneration;
+    if(!tok)return;
     const btn=document.getElementById('verifyResendBtn');
     if(btn){btn.disabled=true;btn.textContent='Sending…'}
     try{
-      const r=await fetch(API+'/api/customers/me/resend-verification',{method:'POST',headers:{'Authorization':'Bearer '+authToken}});
+      const r=await fetch(API+'/api/customers/me/resend-verification',{method:'POST',headers:{'Authorization':'Bearer '+tok}});
       const d=await r.json().catch(()=>({}));
+      if(!owns(tok,gen))return;
       const m=document.getElementById('verifyBannerMsg');
       if(r.ok){if(d.alreadyVerified){hideVerifyBanner()}else{showVerifyBanner(true)}}
       else if(m){m.textContent=d.message||'Couldn\u2019t send right now — please try again shortly.'}
     }catch(_){
+      if(!owns(tok,gen))return;
       const m=document.getElementById('verifyBannerMsg');
       if(m)m.textContent='Network error — please try again.';
     }finally{
@@ -1336,10 +1477,24 @@
   }
   window.resendVerifyEmail=resendVerifyEmail;
 
-  /* ── join + redirect ── */
-  async function doJoin(){
+  /* ── join + checkout hand-off ── */
+  function resetSuccessPane(){
+    const pane=document.getElementById('successPane');
+    pane.querySelector('.success-ring').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#1559C3" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    pane.querySelector('h3').textContent='Almost done';
+    pane.querySelector('.success-sub').textContent='Preparing your secure Square payment page. Your membership is not active until Square confirms payment.';
+    const btn=document.getElementById('manualPayBtn');btn.href='#';btn.style.display='none';
+    const hint=document.getElementById('manualPayHint');hint.innerHTML='';hint.style.display='none';
+  }
+  async function doJoin(expectedPlan=selectedPlan,expectedDialog=dialogGeneration){
     if(!authToken||!selectedPlan||manageOnly||hasMembership)return;
+    if(expectedPlan!==selectedPlan||expectedDialog!==dialogGeneration||
+      !document.getElementById('joinModal').classList.contains('open')||
+      !document.getElementById('joinTerms').checked)return;
+    const tok=authToken,gen=sessionGeneration,plan=selectedPlan;
+    const joinCurrent=()=>owns(tok,gen)&&expectedDialog===dialogGeneration&&plan===selectedPlan;
     document.getElementById('formPane').style.display='none';
+    resetSuccessPane();
     document.getElementById('successPane').classList.add('show');
     document.querySelector('.redirect-row').style.display='';
     document.getElementById('manualPayBtn').style.display='none';
@@ -1352,12 +1507,13 @@
     try{
       const r=await fetch(API+'/api/membership/join',{
         method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
-        body:JSON.stringify(Object.assign({planId:selectedPlan.id,billingFrequency:selectedPlan.frequency||'monthly',termsAccepted:true},selectedPlan.commitment&&document.getElementById('joinTerms').checked?{minimumTermAccepted:true}:{})),
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+        body:JSON.stringify(Object.assign({planId:plan.id,billingFrequency:plan.frequency||'monthly',termsAccepted:true},plan.commitment&&document.getElementById('joinTerms').checked?{minimumTermAccepted:true}:{})),
         signal:ac.signal,
       });
       clearTimeout(watchdog);
-      const d=await r.json();
+      const d=await r.json().catch(()=>({}));
+      if(!joinCurrent())return;
       if(!r.ok){
         // bounce back to form with error
         document.getElementById('successPane').classList.remove('show');
@@ -1367,18 +1523,20 @@
         return;
       }
       if(d.checkoutUrl){
-        // Show manual fallback button immediately so the user always has a way forward,
-        // even if the auto-redirect is blocked by the browser or an extension.
+        // No automatic navigation: the customer opens Square with an explicit click.
+        // Inside the Wix iframe the link opens a new top-level tab.
+        let safe='';try{const u=new URL(d.checkoutUrl,location.href);if(u.protocol==='https:'||u.protocol==='http:')safe=u.href}catch(_){}
+        document.querySelector('.redirect-row').style.display='none';
+        if(!safe)throw new Error('Square did not return a valid payment link. Nothing has been charged.');
         const btn=document.getElementById('manualPayBtn');
-        btn.href=d.checkoutUrl;
+        btn.href=safe;
         btn.target=inFrame?'_blank':'_self';
-        btn.style.display='inline-block';
-        // Reveal hint text after a short pause if we haven't already navigated away
-        setTimeout(()=>{document.getElementById('manualPayHint').style.display='block'},2500);
-        // Auto-redirect attempt
-        // Square checkout must run top-level: inside a Wix iframe third-party
-        // cookies are unreliable, so break out (or open a new tab).
-        setTimeout(()=>{openCheckout(d.checkoutUrl)},1200);
+        btn.style.display='inline-flex';
+        document.querySelector('.success-sub').textContent='Payment pending. Continue to Square to pay securely. Your membership is not active until Square confirms payment; nothing has been charged yet.';
+        const hint=document.getElementById('manualPayHint');
+        hint.innerHTML=(inFrame?'Opens in a new tab. ':'')+'If the button does not open, copy this link: <a href="'+esc(safe)+'" target="'+(inFrame?'_blank':'_self')+'" rel="noopener">'+esc(safe)+'</a>';
+        hint.style.display='block';
+        btn.focus();
       }else if(d.status==='active'){
         // Activated without payment (free plan or Square not configured)
         document.querySelector('.success-sub').textContent='Your membership is now active! Download The 147 app to book tables, track loyalty points, and manage your account.';
@@ -1392,13 +1550,14 @@
       }
     }catch(err){
       clearTimeout(watchdog);
+      if(!joinCurrent())return;
       const aborted=(err && err.name==='AbortError');
       document.getElementById('successPane').classList.remove('show');
       document.getElementById('formPane').style.display='';
       const errEl=activeTab==='reg'?document.getElementById('regErr'):document.getElementById('loginErr');
       errEl.textContent=aborted
         ? 'The payment system took too long to respond. Please try again in a moment.'
-        : 'Network error — please try again.';
+        : (err&&err.message&&!/fetch|network/i.test(err.message)?err.message:'Network error — please try again.');
       errEl.classList.add('show');
     }
   }

@@ -6,7 +6,7 @@
 
   var URLS = {
     booking: "/widget/booking",
-    membership: "/test-site/join",
+    membership: "/widget/membership",
     order: "/test-site/menu"
   };
   var TITLES = {
@@ -39,16 +39,21 @@
   var titleEl = modal.querySelector(".ts-modal-title");
   var iframe = modal.querySelector(".ts-modal-iframe");
   var loading = modal.querySelector(".ts-modal-loading");
+  var opener, closeTimer;
 
   function open(kind) {
     var url = URLS[kind];
     if (!url) return;
+    clearTimeout(closeTimer);
+    opener = document.activeElement;
     titleEl.textContent = TITLES[kind] || "";
     iframe.classList.remove("ready");
     loading.classList.remove("hidden");
     iframe.src = url;
+    iframe.title = TITLES[kind];
     document.documentElement.style.overflow = "hidden";
     modal.classList.add("open");
+    modal.querySelector(".ts-modal-close").focus();
     // Update URL hash so refresh re-opens the same modal (nice-to-have)
     try { history.replaceState(null, "", "#" + kind); } catch (e) {}
   }
@@ -56,7 +61,8 @@
   function close() {
     modal.classList.remove("open");
     document.documentElement.style.overflow = "";
-    setTimeout(function () { iframe.src = "about:blank"; }, 250);
+    closeTimer = setTimeout(function () { iframe.src = "about:blank"; }, 250);
+    if (opener && opener.isConnected) opener.focus();
     try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) {}
   }
 

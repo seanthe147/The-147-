@@ -100,3 +100,59 @@ mtime_ms = 1793824916638
 storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/afb381bd-ad1d-4a3c-83ee-5b983a4087a0/cd2dd247-8048-4e14-bf76-ec950ec62df5"
 storage_version_token = "1793824950466706"
 content_type = "text/csv"
+
+[[outputs]]
+id = "grWnHMYvnOAIcZ8_gcNI4"
+uri = "file://generated-artifacts/widgets/before-membership-375.png"
+type = "image"
+title = "Membership before"
+description = "Original phone-width widget, captured before changes."
+logical_id = "8f8ecba8-bf41-4d93-b5aa-e065efb23943"
+content_hash = "sha256:28ebb7f5428c3354dc5142294315d82bdb5b7305bfdfac2c5e017e2032dc31f4"
+size = 216617
+mtime_ms = 1794529232068
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/8f8ecba8-bf41-4d93-b5aa-e065efb23943/7148fc74-2a0f-4b41-985d-8b452b972e2a"
+storage_version_token = "1794530484168069"
+content_type = "image/png"
+
+[[outputs]]
+id = "0eYXJGNZtsyiUQWSnarhj"
+uri = "file://generated-artifacts/widgets/after-membership-preview.jpg"
+type = "image"
+title = "Membership after"
+description = "Compact membership widget with returning-member access and clear billing terms."
+logical_id = "3f1864ea-149c-4c15-9b6f-9beeac1094d0"
+content_hash = "sha256:2e5d687c66cbc74fccab66567cb6ee24d33b5392d48b1249517f88c4139b0275"
+size = 50709
+mtime_ms = 1794529539476
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/3f1864ea-149c-4c15-9b6f-9beeac1094d0/6d65d440-d62a-4e59-8a57-703ec0df7ae9"
+storage_version_token = "1794530485024077"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "TmgoSTUcm3iNYbfLyZT0P"
+uri = "file://generated-artifacts/widgets/before-booking-375.png"
+type = "image"
+title = "Booking before"
+description = "Original phone-width booking widget."
+logical_id = "74db599f-9c04-4072-ba52-02bbf38ad87c"
+content_hash = "sha256:72bbf15c2fd4af1b0fab25eeac6848e5073178a21e669ced5e66f535acad7451"
+size = 27397
+mtime_ms = 1794529230028
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/74db599f-9c04-4072-ba52-02bbf38ad87c/f14ac3c8-1b84-4f41-9318-6447ebc29f16"
+storage_version_token = "1794530485618615"
+content_type = "image/png"
+
+[[outputs]]
+id = "Ff9WRb44PPyi7GUQQQf6O"
+uri = "file://generated-artifacts/widgets/after-booking-preview.jpg"
+type = "image"
+title = "Booking after"
+description = "Updated booking controls; regression coverage also verifies date navigation and repeat bookings."
+logical_id = "f8c9c88d-f015-4d1c-a8ed-86cccb336aa2"
+content_hash = "sha256:f00c7c554f309f18c47a9f90aca5bc75b879f219c0f54ee1d51b05d8bf290098"
+size = 22185
+mtime_ms = 1794530463796
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/f8c9c88d-f015-4d1c-a8ed-86cccb336aa2/5aa01754-3a5a-4334-9763-0500af6b9690"
+storage_version_token = "1794530486201560"
+content_type = "image/jpeg"
